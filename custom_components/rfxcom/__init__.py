@@ -31,9 +31,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Configuration de l'entrée RFXCOM: %s", entry.entry_id)
     _LOGGER.debug("Données de configuration: %s", entry.data)
     _LOGGER.debug("Options: %s", entry.options)
-    
+
     coordinator = RFXCOMCoordinator(hass, entry)
-    
+
     try:
         _LOGGER.debug("Initialisation du coordinateur...")
         await coordinator.async_setup()
@@ -41,15 +41,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.error("Erreur lors de l'initialisation de RFXCOM: %s", err)
         raise ConfigEntryNotReady from err
-    
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
     _LOGGER.debug("Coordinateur enregistré dans hass.data")
-    
+
     _LOGGER.debug("Configuration des plateformes: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _LOGGER.info("Intégration RFXCOM configurée avec succès")
-    
+
     return True
 
 
@@ -58,21 +58,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Déchargement de l'entrée RFXCOM: %s", entry.entry_id)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     _LOGGER.debug("Plateformes déchargées: %s", unload_ok)
-    
+
     if unload_ok:
         coordinator: RFXCOMCoordinator = hass.data[DOMAIN][entry.entry_id]
         _LOGGER.debug("Arrêt du coordinateur...")
         await coordinator.async_shutdown()
         hass.data[DOMAIN].pop(entry.entry_id)
         _LOGGER.debug("Coordinateur retiré de hass.data")
-        
+
         # Décharger les services si c'est la dernière entrée
         if not hass.data[DOMAIN]:
             _LOGGER.debug("Dernière entrée, déchargement des services")
             await async_unload_services(hass)
         else:
             _LOGGER.debug("Autres entrées présentes, services conservés")
-    
+
     _LOGGER.info("Intégration RFXCOM déchargée: %s", unload_ok)
     return unload_ok
 

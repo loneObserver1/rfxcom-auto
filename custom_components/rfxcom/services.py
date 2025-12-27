@@ -66,7 +66,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             PROTOCOL_BBSB, PROTOCOL_RSL, PROTOCOL_LIVOLO, PROTOCOL_TRC02,
             PROTOCOL_AOKE, PROTOCOL_RGB_TRC02, PROTOCOL_BLYSS
         )
-        
+
         lighting1_protocols = [
             PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
             PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,
@@ -84,7 +84,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             PROTOCOL_RGB_TRC02
         ]
         lighting6_protocols = [PROTOCOL_BLYSS]
-        
+
         if protocol in lighting1_protocols:
             if not house_code or not unit_code:
                 _LOGGER.error("house_code et unit_code sont requis pour le protocole %s", protocol)

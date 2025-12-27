@@ -76,30 +76,30 @@ def _get_available_ports() -> list[str]:
     """Retourne la liste des ports série disponibles."""
     ports = []
     excluded_keywords = ["bluetooth", "debug", "incoming", "jabra", "modem"]
-    
+
     try:
         available_ports = serial.tools.list_ports.comports()
         for port in available_ports:
             port_str = port.device
             description_lower = (port.description or "").lower()
-            
+
             # Filtrer les ports qui ne sont probablement pas des ports série RFXCOM
             if any(keyword in description_lower for keyword in excluded_keywords):
                 _LOGGER.debug("Port exclu (non RFXCOM): %s (%s)", port_str, port.description)
                 continue
-            
+
             # Filtrer les ports cu.* sur macOS (utiliser tty.*)
             if port_str.startswith("/dev/cu.") and not port_str.startswith("/dev/cu.usbserial"):
                 # Sur macOS, préférer tty.* mais garder cu.usbserial
                 tty_equivalent = port_str.replace("/dev/cu.", "/dev/tty.")
                 if tty_equivalent not in [p.device for p in available_ports]:
                     continue
-            
+
             ports.append(port_str)
             _LOGGER.debug("Port série détecté: %s (%s)", port_str, port.description or "Sans description")
     except Exception as err:
         _LOGGER.warning("Erreur lors de la détection des ports série: %s", err)
-    
+
     # Ajouter les ports par défaut s'ils ne sont pas déjà dans la liste
     default_ports = [
         "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2",
@@ -110,20 +110,20 @@ def _get_available_ports() -> list[str]:
     for port in default_ports:
         if port not in ports:
             ports.append(port)
-    
+
     # Trier les ports (ports USB en premier)
     ports.sort(key=lambda x: (
         0 if "usb" in x.lower() or "usbmodem" in x.lower() or "usbserial" in x.lower() else 1,
         x
     ))
-    
+
     return ports
 
 
 def _build_usb_schema() -> vol.Schema:
     """Construit le schéma USB avec les ports disponibles."""
     available_ports = _get_available_ports()
-    
+
     # Créer les options pour le sélecteur avec descriptions
     port_options = {}
     for port in available_ports:
@@ -137,12 +137,12 @@ def _build_usb_schema() -> vol.Schema:
             port_options[port] = label
         except Exception:
             port_options[port] = port
-    
+
     # Ajouter l'option de saisie manuelle
     port_options["manual"] = "✏️ Saisie manuelle..."
-    
+
     default_port = DEFAULT_PORT if DEFAULT_PORT in available_ports else (available_ports[0] if available_ports else DEFAULT_PORT)
-    
+
     schema_dict = {
         vol.Required(CONF_PORT, default=default_port): vol.In(port_options),
         vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.All(
@@ -150,7 +150,7 @@ def _build_usb_schema() -> vol.Schema:
         ),
         vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
     }
-    
+
     return vol.Schema(schema_dict)
 
 STEP_USER_DATA_SCHEMA_NETWORK = vol.Schema(
@@ -189,48 +189,48 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 available_ports = await self.hass.async_add_executor_job(
                     serial.tools.list_ports.comports
                 )
-                
+
                 # Filtrer pour ne garder que les ports USB réels détectés
                 real_usb_ports = []
                 excluded_keywords = ["bluetooth", "debug", "incoming", "jabra", "modem"]
-                
+
                 for port in available_ports:
                     port_str = port.device
                     description_lower = (port.description or "").lower()
-                    
+
                     # Exclure les ports non-RFXCOM
                     if any(keyword in description_lower for keyword in excluded_keywords):
                         continue
-                    
+
                     # Vérifier si c'est un port USB réel (pas un port par défaut)
                     is_usb = any(keyword in port_str.lower() for keyword in [
                         "usb", "usbmodem", "usbserial", "ttyusb", "ttyacm"
                     ])
-                    
+
                     # Sur macOS, préférer tty.* mais garder cu.usbserial
                     if port_str.startswith("/dev/cu.") and not port_str.startswith("/dev/cu.usbserial"):
                         tty_equivalent = port_str.replace("/dev/cu.", "/dev/tty.")
                         if tty_equivalent not in [p.device for p in available_ports]:
                             continue
-                    
+
                     if is_usb:
                         real_usb_ports.append(port_str)
                         _LOGGER.debug("Port USB détecté: %s (%s)", port_str, port.description or "Sans description")
-                
+
                 # Si des ports USB sont détectés, afficher directement le formulaire USB
                 if real_usb_ports:
                     _LOGGER.info("Ports USB détectés: %s, affichage direct du formulaire USB", real_usb_ports)
                     return await self.async_step_usb()
             except Exception as err:
                 _LOGGER.warning("Erreur lors de la détection des ports USB: %s", err)
-            
+
             # Sinon, afficher le menu de sélection
             return self.async_show_form(
                 step_id="user", data_schema=STEP_CONNECTION_TYPE_SCHEMA
             )
 
         connection_type = user_input.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_USB)
-        
+
         if connection_type == CONNECTION_TYPE_USB:
             return await self.async_step_usb()
         else:
@@ -248,11 +248,11 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors = {}
         port = user_input.get(CONF_PORT)
-        
+
         # Si "Saisie manuelle" est sélectionné, demander le port
         if port == "manual":
             return await self.async_step_usb_manual()
-        
+
         if not port:
             errors["base"] = "port_required"
 
@@ -365,7 +365,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         """Affiche la liste des appareils et les options."""
         devices = self.config_entry.options.get("devices", [])
         auto_registry = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
-        
+
         if user_input is None:
             # Créer les options pour le sélecteur
             options = ["add", "auto_registry"]
@@ -373,18 +373,18 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 "add": "➕ Ajouter un appareil",
                 "auto_registry": f"🔍 Auto-détection: {'Activée' if auto_registry else 'Désactivée'}",
             }
-            
+
             for idx, device in enumerate(devices):
                 device_name = device.get("name", f"Appareil {idx+1}")
                 options.append(f"edit_{idx}")
                 options.append(f"delete_{idx}")
                 option_labels[f"edit_{idx}"] = f"✏️ Modifier: {device_name}"
                 option_labels[f"delete_{idx}"] = f"🗑️ Supprimer: {device_name}"
-            
+
             schema = vol.Schema({
                 vol.Required("action"): vol.In(options),
             })
-            
+
             return self.async_show_form(
                 step_id="init",
                 data_schema=schema,
@@ -397,7 +397,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                     "auto_registry_status": "Activée" if auto_registry else "Désactivée",
                 },
             )
-        
+
         action = user_input.get("action")
         if action == "add":
             return await self.async_step_add_device()
@@ -409,7 +409,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         elif action.startswith("delete_"):
             idx = int(action.split("_")[1])
             return await self.async_step_delete_device(idx)
-        
+
         return await self.async_step_init()
 
     async def async_step_auto_registry(
@@ -417,7 +417,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Configure l'auto-registry."""
         current_value = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
-        
+
         if user_input is None:
             return self.async_show_form(
                 step_id="auto_registry",
@@ -425,11 +425,11 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Required(CONF_AUTO_REGISTRY, default=current_value): bool,
                 }),
             )
-        
+
         # Mettre à jour l'option
         options = dict(self.config_entry.options)
         options[CONF_AUTO_REGISTRY] = user_input[CONF_AUTO_REGISTRY]
-        
+
         return self.async_create_entry(title="", data=options)
 
     async def async_step_add_device(
@@ -445,7 +445,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Validation selon le protocole
         protocol = user_input[CONF_PROTOCOL]
-        
+
         # Protocoles Lighting1 (house_code + unit_code requis)
         lighting1_protocols = [
             PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
@@ -453,7 +453,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             PROTOCOL_PHILIPS, PROTOCOL_ENERGENIE, PROTOCOL_ENERGENIE_5,
             PROTOCOL_COCOSTICK
         ]
-        
+
         # Protocoles Lighting2-6 (device_id requis, unit_code optionnel)
         lighting2_protocols = [
             PROTOCOL_AC, PROTOCOL_HOMEEASY_EU, PROTOCOL_ANSLUT, PROTOCOL_KAMBROOK
@@ -466,7 +466,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             PROTOCOL_RGB_TRC02
         ]
         lighting6_protocols = [PROTOCOL_BLYSS]
-        
+
         if protocol in lighting1_protocols:
             if not user_input.get(CONF_HOUSE_CODE) or not user_input.get(CONF_UNIT_CODE):
                 errors["base"] = "lighting1_requires_codes"
@@ -521,9 +521,9 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         devices = self.config_entry.options.get("devices", [])
         if device_idx >= len(devices):
             return await self.async_step_init()
-        
+
         device = devices[device_idx]
-        
+
         if user_input is None:
             # Pré-remplir le formulaire avec les valeurs existantes
             schema = vol.Schema({
@@ -541,7 +541,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         protocol = user_input[CONF_PROTOCOL]
         device["name"] = user_input["name"]
         device[CONF_PROTOCOL] = protocol
-        
+
         # Définir les listes de protocoles (réutiliser celles de add_device)
         lighting1_protocols = [
             PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
@@ -560,7 +560,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             PROTOCOL_RGB_TRC02
         ]
         lighting6_protocols = [PROTOCOL_BLYSS]
-        
+
         if protocol in lighting1_protocols:
             device[CONF_HOUSE_CODE] = user_input.get(CONF_HOUSE_CODE, "")
             device[CONF_UNIT_CODE] = user_input.get(CONF_UNIT_CODE, "")
@@ -575,7 +575,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 device["sensor_data"] = {}
 
         devices[device_idx] = device
-        
+
         return self.async_create_entry(
             title="", data={"devices": devices}
         )
@@ -587,9 +587,9 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         devices = self.config_entry.options.get("devices", [])
         if device_idx >= len(devices):
             return await self.async_step_init()
-        
+
         device_name = devices[device_idx].get("name", f"Appareil {device_idx+1}")
-        
+
         if user_input is None:
             return self.async_show_form(
                 step_id="delete_device",
@@ -598,13 +598,13 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 }),
                 description_placeholders={"device_name": device_name},
             )
-        
+
         if user_input.get("confirm"):
             devices.pop(device_idx)
             return self.async_create_entry(
                 title="", data={"devices": devices}
             )
-        
+
         return await self.async_step_init()
 
 

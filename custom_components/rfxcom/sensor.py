@@ -37,7 +37,7 @@ async def async_setup_entry(
     # Charger les appareils configurés
     devices = entry.options.get("devices", [])
     _LOGGER.debug("Configuration de %s appareils RFXCOM (sensors)", len(devices))
-    
+
     entities = []
     for device_config in devices:
         if device_config.get(CONF_PROTOCOL) == PROTOCOL_TEMP_HUM:
@@ -45,13 +45,13 @@ async def async_setup_entry(
             sensor_data = device_config.get("sensor_data", {})
             name = device_config.get("name", f"RFXCOM Temp/Hum {device_id}")
             unique_id = f"{entry.entry_id}_temp_hum_{device_id}"
-            
+
             _LOGGER.debug(
                 "Création capteur TEMP_HUM: %s (device_id=%s)",
                 name,
                 device_id,
             )
-            
+
             # Créer les entités température et humidité
             entities.append(
                 RFXCOMTemperatureSensor(
@@ -118,7 +118,7 @@ class RFXCOMTemperatureSensor(
                         )
                     self._native_value = temp
                 break
-        
+
         return self._native_value
 
 
@@ -167,6 +167,6 @@ class RFXCOMHumiditySensor(
                         )
                     self._native_value = hum_int
                 break
-        
+
         return self._native_value
 

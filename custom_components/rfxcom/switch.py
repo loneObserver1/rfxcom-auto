@@ -37,7 +37,7 @@ async def async_setup_entry(
     # Charger les appareils configurés
     devices = entry.options.get("devices", [])
     _LOGGER.debug("Configuration de %s appareils RFXCOM", len(devices))
-    
+
     entities = []
     for idx, device_config in enumerate(devices):
         _LOGGER.debug(
@@ -87,7 +87,7 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
     async def async_added_to_hass(self) -> None:
         """Appelé lorsque l'entité est ajoutée à Home Assistant."""
         await super().async_added_to_hass()
-        
+
         # Note: La restauration de l'état n'est pas implémentée car les switches RFXCOM
         # ne peuvent pas lire leur état réel. L'état est toujours initialisé à False.
 
@@ -113,7 +113,7 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
             house_code=self._house_code,
             unit_code=self._unit_code,
         )
-        
+
         if success:
             self._is_on = True
             self.async_write_ha_state()
@@ -138,7 +138,7 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
             house_code=self._house_code,
             unit_code=self._unit_code,
         )
-        
+
         if success:
             self._is_on = False
             self.async_write_ha_state()

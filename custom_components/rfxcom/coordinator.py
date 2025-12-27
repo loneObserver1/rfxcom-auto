@@ -129,7 +129,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Socket réseau connectée avec succès")
             else:
                 raise ValueError(f"Type de connexion inconnu: {self.connection_type}")
-            
+
             # Démarrer la réception de messages si auto-registry est activé
             if self.auto_registry:
                 _LOGGER.debug("Auto-registry activé, démarrage de la boucle de réception")
@@ -150,7 +150,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 await self._receive_task
             except asyncio.CancelledError:
                 pass
-        
+
         if self.connection_type == CONNECTION_TYPE_USB:
             if self.serial_port and self.serial_port.is_open:
                 await self.hass.async_add_executor_job(self.serial_port.close)
@@ -195,7 +195,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 if protocol not in PROTOCOL_TO_PACKET:
                     _LOGGER.error("Protocole non supporté: %s", protocol)
                     return False
-                
+
                 packet_type, subtype = PROTOCOL_TO_PACKET[protocol]
                 _LOGGER.debug(
                     "Construction commande %s: packet_type=0x%02X, subtype=%s",
@@ -203,7 +203,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     packet_type,
                     subtype,
                 )
-                
+
                 # Construire la commande selon le type de paquet
                 if packet_type == PACKET_TYPE_LIGHTING1:
                     cmd_bytes = self._build_lighting1_command(
@@ -232,11 +232,11 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 else:
                     _LOGGER.error("Type de paquet non supporté: 0x%02X", packet_type)
                     return False
-                
+
                 if not cmd_bytes:
                     _LOGGER.error("Échec de la construction de la commande pour %s", protocol)
                     return False
-                
+
                 _LOGGER.debug("Commande construite: %s bytes, hex=%s", len(cmd_bytes), cmd_bytes.hex())
 
                 # Envoi de la commande
@@ -274,12 +274,12 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         command: str,
     ) -> bytes:
         """Construit une commande Lighting1 (X10, ARC, ABICOD, etc.).
-        
+
         Format: [length] 0x10 [subtype] [seq] [house] [unit] [cmd] [signal]
         """
         # Incrémenter le numéro de séquence
         self._sequence_number = (self._sequence_number + 1) % 256
-        
+
         # Convertir house code (A=0x41, B=0x42, etc. ou hex)
         hc = 0x41  # Default to A
         if house_code:
@@ -290,16 +290,16 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     hc = int(house_code, 16) if house_code.startswith("0x") else int(house_code)
                 except ValueError:
                     pass
-        
+
         # Convertir unit code
         try:
             uc = int(unit_code) if unit_code else 1
         except (ValueError, TypeError):
             uc = 1
-        
+
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
-        
+
         # Construire le paquet: 07 10 [subtype] [seq] [house] [unit] [cmd] 00
         return bytes([
             0x07,  # Longueur
@@ -320,24 +320,24 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         command: str,
     ) -> bytes:
         """Construit une commande Lighting2 (AC, HomeEasy EU, etc.).
-        
+
         Format: [length] 0x11 [subtype] [id(4)] [unit] [cmd] [level] [signal]
         """
         # Incrémenter le numéro de séquence
         self._sequence_number = (self._sequence_number + 1) % 256
-        
+
         # Convertir device_id en 4 bytes
         device_bytes = self._hex_string_to_bytes(device_id or "00000000", 4)
-        
+
         # Unit code (généralement 0 pour AC)
         unit_code = 0
-        
+
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
-        
+
         # Level (0x0F = 100% pour ON, 0x00 pour OFF)
         level = 0x0F if command == CMD_ON else 0x00
-        
+
         # Construire le paquet: 0B 11 [subtype] [id(4)] [unit] [cmd] [level] 00
         return bytes([
             0x0B,  # Longueur
@@ -359,27 +359,27 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         command: str,
     ) -> bytes:
         """Construit une commande Lighting3 (Ikea Koppla).
-        
+
         Format: [length] 0x12 [id(2)] [group] [unit] [cmd] [signal]
         """
         # Incrémenter le numéro de séquence
         self._sequence_number = (self._sequence_number + 1) % 256
-        
+
         # Convertir device_id en 2 bytes
         device_bytes = self._hex_string_to_bytes(device_id or "0000", 2)
-        
+
         # Group (généralement 0)
         group = 0
-        
+
         # Unit code
         try:
             uc = int(unit_code) if unit_code else 1
         except (ValueError, TypeError):
             uc = 1
-        
+
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
-        
+
         # Construire le paquet: 08 12 [id(2)] [group] [unit] [cmd] 00
         return bytes([
             0x08,  # Longueur
@@ -399,18 +399,18 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         command: str,
     ) -> bytes:
         """Construit une commande Lighting4 (PT2262).
-        
+
         Format: [length] 0x13 [id(3)] [cmd] [signal]
         """
         # Incrémenter le numéro de séquence
         self._sequence_number = (self._sequence_number + 1) % 256
-        
+
         # Convertir device_id en 3 bytes
         device_bytes = self._hex_string_to_bytes(device_id or "000000", 3)
-        
+
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
-        
+
         # Construire le paquet: 07 13 [id(3)] [cmd] 00
         return bytes([
             0x07,  # Longueur
@@ -430,27 +430,27 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         command: str,
     ) -> bytes:
         """Construit une commande Lighting5 (LightwaveRF, etc.).
-        
+
         Format: [length] 0x14 [subtype] [id(3)] [unit] [cmd] [level] [signal]
         """
         # Incrémenter le numéro de séquence
         self._sequence_number = (self._sequence_number + 1) % 256
-        
+
         # Convertir device_id en 3 bytes
         device_bytes = self._hex_string_to_bytes(device_id or "000000", 3)
-        
+
         # Unit code
         try:
             uc = int(unit_code) if unit_code else 0
         except (ValueError, TypeError):
             uc = 0
-        
+
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
-        
+
         # Level (0x0F = 100% pour ON, 0x00 pour OFF)
         level = 0x0F if command == CMD_ON else 0x00
-        
+
         # Construire le paquet: 0A 14 [subtype] [id(3)] [unit] [cmd] [level] 00
         return bytes([
             0x0A,  # Longueur
@@ -471,24 +471,24 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         command: str,
     ) -> bytes:
         """Construit une commande Lighting6 (BLYSS).
-        
+
         Format: [length] 0x15 [id(2)] [group] [unit] [cmd] [signal]
         """
         # Incrémenter le numéro de séquence
         self._sequence_number = (self._sequence_number + 1) % 256
-        
+
         # Convertir device_id en 2 bytes
         device_bytes = self._hex_string_to_bytes(device_id or "0000", 2)
-        
+
         # Group (généralement 0)
         group = 0
-        
+
         # Unit code (généralement 0)
         unit_code = 0
-        
+
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
-        
+
         # Construire le paquet: 08 15 [id(2)] [group] [unit] [cmd] 00
         return bytes([
             0x08,  # Longueur
@@ -506,16 +506,16 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         try:
             # Supprimer les espaces et les séparateurs
             hex_str = hex_str.replace(" ", "").replace(":", "").replace("-", "")
-            
+
             # Convertir en bytes
             device_bytes = bytes.fromhex(hex_str)
-            
+
             # Compléter ou tronquer à la longueur souhaitée
             if len(device_bytes) < length:
                 device_bytes = device_bytes + bytes(length - len(device_bytes))
             elif len(device_bytes) > length:
                 device_bytes = device_bytes[:length]
-            
+
             return device_bytes
         except ValueError:
             _LOGGER.error("Erreur lors de la conversion hex: %s", hex_str)
@@ -525,7 +525,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         """Boucle de réception des messages RFXCOM."""
         _LOGGER.info("Démarrage de la réception des messages RFXCOM")
         _LOGGER.debug("Type de connexion: %s", self.connection_type)
-        
+
         while True:
             try:
                 # Lire les données
@@ -534,7 +534,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                         _LOGGER.debug("Port série fermé, attente...")
                         await asyncio.sleep(1)
                         continue
-                    
+
                     # Lire la longueur du paquet (premier byte)
                     data = await self.hass.async_add_executor_job(
                         self.serial_port.read, 1
@@ -542,13 +542,13 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     if not data or len(data) < 1:
                         await asyncio.sleep(0.1)
                         continue
-                    
+
                     packet_length = data[0]
                     _LOGGER.debug("Paquet reçu: longueur=%s", packet_length)
                     if packet_length < 1 or packet_length > 50:
                         _LOGGER.debug("Longueur invalide, ignoré: %s", packet_length)
                         continue
-                    
+
                     # Lire le reste du paquet
                     remaining = await self.hass.async_add_executor_job(
                         self.serial_port.read, packet_length - 1
@@ -556,16 +556,16 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     if len(remaining) < packet_length - 1:
                         _LOGGER.debug("Paquet incomplet: reçu %s/%s bytes", len(remaining), packet_length - 1)
                         continue
-                    
+
                     packet = data + remaining
                     _LOGGER.debug("Paquet complet reçu: %s bytes, hex=%s", len(packet), packet.hex())
-                    
+
                 elif self.connection_type == CONNECTION_TYPE_NETWORK:
                     if not self.socket:
                         _LOGGER.debug("Socket fermée, attente...")
                         await asyncio.sleep(1)
                         continue
-                    
+
                     # Lire la longueur
                     data = await self.hass.async_add_executor_job(
                         self.socket.recv, 1
@@ -573,13 +573,13 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     if not data or len(data) < 1:
                         await asyncio.sleep(0.1)
                         continue
-                    
+
                     packet_length = data[0]
                     _LOGGER.debug("Paquet réseau reçu: longueur=%s", packet_length)
                     if packet_length < 1 or packet_length > 50:
                         _LOGGER.debug("Longueur invalide, ignoré: %s", packet_length)
                         continue
-                    
+
                     # Lire le reste
                     remaining = await self.hass.async_add_executor_job(
                         self.socket.recv, packet_length - 1
@@ -587,13 +587,13 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     if len(remaining) < packet_length - 1:
                         _LOGGER.debug("Paquet incomplet: reçu %s/%s bytes", len(remaining), packet_length - 1)
                         continue
-                    
+
                     packet = data + remaining
                     _LOGGER.debug("Paquet réseau complet: %s bytes, hex=%s", len(packet), packet.hex())
                 else:
                     await asyncio.sleep(1)
                     continue
-                
+
                 # Parser le paquet
                 _LOGGER.debug("Parsing du paquet: %s", packet.hex())
                 device_info = self._parse_packet(packet)
@@ -602,7 +602,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     await self._handle_discovered_device(device_info)
                 else:
                     _LOGGER.debug("Paquet non reconnu ou ignoré")
-                    
+
             except asyncio.CancelledError:
                 _LOGGER.info("Réception des messages RFXCOM arrêtée")
                 break
@@ -615,44 +615,44 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         if len(packet) < 4:
             _LOGGER.debug("Paquet trop court: %s bytes (minimum 4)", len(packet))
             return None
-        
+
         packet_type = packet[1]
         _LOGGER.debug("Type de paquet: 0x%02X", packet_type)
-        
+
         # Lighting1 (X10, ARC, ABICOD, etc.)
         if packet_type == PACKET_TYPE_LIGHTING1 and len(packet) >= 8:
             return self._parse_lighting1_packet(packet)
-        
+
         # Lighting2 (AC, HomeEasy EU, etc.)
         elif packet_type == PACKET_TYPE_LIGHTING2 and len(packet) >= 11:
             return self._parse_lighting2_packet(packet)
-        
+
         # Lighting3 (Ikea Koppla)
         elif packet_type == PACKET_TYPE_LIGHTING3 and len(packet) >= 8:
             return self._parse_lighting3_packet(packet)
-        
+
         # Lighting4 (PT2262)
         elif packet_type == PACKET_TYPE_LIGHTING4 and len(packet) >= 7:
             return self._parse_lighting4_packet(packet)
-        
+
         # Lighting5 (LightwaveRF, etc.)
         elif packet_type == PACKET_TYPE_LIGHTING5 and len(packet) >= 10:
             return self._parse_lighting5_packet(packet)
-        
+
         # Lighting6 (BLYSS)
         elif packet_type == PACKET_TYPE_LIGHTING6 and len(packet) >= 8:
             return self._parse_lighting6_packet(packet)
-        
+
         # TEMP_HUM protocol
         elif packet_type == PACKET_TYPE_TEMP_HUM and len(packet) >= 11:
             subtype = packet[2]
             _LOGGER.debug("TEMP_HUM subtype: 0x%02X", subtype)
-            
+
             if subtype == SUBTYPE_TH13:  # TH13 - Alecto WS1700
                 # ID: bytes 4-5 (big-endian: 0x6803 = 26627)
                 device_id_int = (packet[4] << 8) | packet[5]
                 device_id = str(device_id_int)
-                
+
                 # Température: bytes 6-7 (big-endian, en dixièmes de degré: 0x00D4 = 212 = 21.2°C)
                 temp_raw = (packet[6] << 8) | packet[7]
                 # Gérer les températures négatives (si bit de signe)
@@ -660,10 +660,10 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     temperature = ((temp_raw ^ 0xFFFF) + 1) / -10.0
                 else:
                     temperature = temp_raw / 10.0
-                
+
                 # Humidité: byte 8 (0x27 = 39%)
                 humidity = packet[8]
-                
+
                 # Status: byte 9 (0x02 = Dry)
                 status_byte = packet[9]
                 status_map = {
@@ -673,12 +673,12 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     0x03: "Wet",
                 }
                 status = status_map.get(status_byte, f"Unknown(0x{status_byte:02X})")
-                
+
                 # Signal level et Battery: byte 10 (0x89 = signal=8, battery=9)
                 signal_level = (packet[10] >> 4) & 0x0F
                 battery_nibble = packet[10] & 0x0F
                 battery_ok = battery_nibble == 0x09  # 9 = OK, autres = LOW
-                
+
                 _LOGGER.debug(
                     "TEMP_HUM paquet: device_id=%s, temp=%.1f°C, hum=%s%%, status=%s, signal=%s, battery=%s",
                     device_id,
@@ -688,7 +688,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     signal_level,
                     "OK" if battery_ok else "LOW",
                 )
-                
+
                 device_info = {
                     CONF_PROTOCOL: PROTOCOL_TEMP_HUM,
                     CONF_DEVICE_ID: device_id,
@@ -706,7 +706,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("TEMP_HUM subtype non supporté: 0x%02X", subtype)
         else:
             _LOGGER.debug("Type de paquet non reconnu: 0x%02X, longueur=%s", packet_type, len(packet))
-        
+
         return None
 
     def _parse_lighting1_packet(self, packet: bytes) -> dict[str, Any] | None:
@@ -715,7 +715,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         house_code_byte = packet[4]
         unit_code = packet[5]
         command = packet[6]
-        
+
         # Mapping subtype -> protocole
         subtype_to_protocol = {
             0x00: PROTOCOL_X10,
@@ -730,19 +730,19 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             0x09: PROTOCOL_ENERGENIE_5,
             0x0A: PROTOCOL_COCOSTICK,
         }
-        
+
         protocol = subtype_to_protocol.get(subtype)
         if not protocol:
             _LOGGER.debug("Lighting1 subtype non supporté: 0x%02X", subtype)
             return None
-        
+
         # Convertir house code byte en lettre (pour ARC et autres)
         house_code = None
         if 0x41 <= house_code_byte <= 0x50:
             house_code = chr(house_code_byte)
         else:
             house_code = f"0x{house_code_byte:02X}"
-        
+
         device_info = {
             CONF_PROTOCOL: protocol,
             CONF_HOUSE_CODE: house_code,
@@ -760,7 +760,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         device_id = device_id_bytes.hex()
         unit_code = packet[8]
         command = packet[9]
-        
+
         # Mapping subtype -> protocole
         subtype_to_protocol = {
             0x00: PROTOCOL_AC,
@@ -768,12 +768,12 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             0x02: PROTOCOL_ANSLUT,
             0x03: PROTOCOL_KAMBROOK,
         }
-        
+
         protocol = subtype_to_protocol.get(subtype)
         if not protocol:
             _LOGGER.debug("Lighting2 subtype non supporté: 0x%02X", subtype)
             return None
-        
+
         device_info = {
             CONF_PROTOCOL: protocol,
             CONF_DEVICE_ID: device_id,
@@ -791,7 +791,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         group = packet[5]
         unit_code = packet[6]
         command = packet[7]
-        
+
         device_info = {
             CONF_PROTOCOL: PROTOCOL_IKEA_KOPPLA,
             CONF_DEVICE_ID: device_id,
@@ -808,7 +808,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         device_id_bytes = packet[3:6]
         device_id = device_id_bytes.hex()
         command = packet[6]
-        
+
         device_info = {
             CONF_PROTOCOL: PROTOCOL_PT2262,
             CONF_DEVICE_ID: device_id,
@@ -825,7 +825,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         device_id = device_id_bytes.hex()
         unit_code = packet[7]
         command = packet[8]
-        
+
         # Mapping subtype -> protocole
         subtype_to_protocol = {
             0x00: PROTOCOL_LIGHTWAVERF,
@@ -837,12 +837,12 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             0x06: PROTOCOL_AOKE,
             0x07: PROTOCOL_RGB_TRC02,
         }
-        
+
         protocol = subtype_to_protocol.get(subtype)
         if not protocol:
             _LOGGER.debug("Lighting5 subtype non supporté: 0x%02X", subtype)
             return None
-        
+
         device_info = {
             CONF_PROTOCOL: protocol,
             CONF_DEVICE_ID: device_id,
@@ -860,7 +860,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         group = packet[5]
         unit_code = packet[6]
         command = packet[7]
-        
+
         device_info = {
             CONF_PROTOCOL: PROTOCOL_BLYSS,
             CONF_DEVICE_ID: device_id,
@@ -887,10 +887,10 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         else:
             # Protocoles avec device_id
             device_id = device_info.get(CONF_DEVICE_ID, "")
-        
+
         unique_id = f"{device_info[CONF_PROTOCOL]}_{device_id}"
         _LOGGER.debug("Identifiant unique généré: %s", unique_id)
-        
+
         # Mettre à jour les données si l'appareil est déjà connu (pour les capteurs)
         if unique_id in self._discovered_devices:
             _LOGGER.debug("Appareil déjà connu, mise à jour des données: %s", unique_id)
@@ -900,17 +900,17 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             # Notifier les entités du changement
             self.async_update_listeners()
             return
-        
+
         # Enregistrer l'appareil découvert
         self._discovered_devices[unique_id] = device_info
         _LOGGER.debug("Appareil ajouté au cache: %s", unique_id)
-        
+
         _LOGGER.info(
             "Nouvel appareil détecté: %s - %s",
             device_info[CONF_PROTOCOL],
             device_id,
         )
-        
+
         # Si auto-registry est activé, ajouter automatiquement
         if self.auto_registry:
             _LOGGER.debug("Auto-registry activé, enregistrement automatique...")
@@ -927,7 +927,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             # Récupérer les appareils existants
             devices = self.entry.options.get("devices", [])
             _LOGGER.debug("Appareils existants: %s", len(devices))
-            
+
             # Vérifier si l'appareil existe déjà
             for existing in devices:
                 if device_info[CONF_PROTOCOL] == PROTOCOL_ARC:
@@ -945,19 +945,19 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     if existing.get(CONF_DEVICE_ID) == device_info[CONF_DEVICE_ID]:
                         _LOGGER.debug("Appareil AC déjà enregistré: %s", device_info[CONF_DEVICE_ID])
                         return  # Déjà enregistré
-            
+
             # Créer la configuration du nouvel appareil
             protocol = device_info[CONF_PROTOCOL]
             if protocol == PROTOCOL_TEMP_HUM:
                 device_name = f"RFXCOM Temp/Hum {device_info[CONF_DEVICE_ID]}"
             else:
                 device_name = f"RFXCOM {protocol} {unique_id.split('_', 1)[1]}"
-            
+
             device_config = {
                 "name": device_name,
                 CONF_PROTOCOL: protocol,
             }
-            
+
             if protocol == PROTOCOL_ARC:
                 device_config[CONF_HOUSE_CODE] = device_info[CONF_HOUSE_CODE]
                 device_config[CONF_UNIT_CODE] = device_info[CONF_UNIT_CODE]
@@ -973,26 +973,26 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 }
             else:
                 device_config[CONF_DEVICE_ID] = device_info[CONF_DEVICE_ID]
-            
+
             # Ajouter l'appareil
             devices.append(device_config)
             _LOGGER.debug("Configuration auto-enregistrée: %s", device_config)
-            
+
             # Mettre à jour les options
             _LOGGER.debug("Mise à jour des options avec %s appareils", len(devices))
             self.hass.config_entries.async_update_entry(
                 self.entry, options={"devices": devices}
             )
-            
+
             _LOGGER.info(
                 "Appareil auto-enregistré: %s",
                 device_config["name"],
             )
-            
+
             # Recharger l'intégration pour créer la nouvelle entité
             _LOGGER.debug("Rechargement de l'intégration pour créer la nouvelle entité")
             await self.hass.config_entries.async_reload(self.entry.entry_id)
-            
+
         except Exception as err:
             _LOGGER.error("Erreur lors de l'auto-enregistrement: %s", err)
 
