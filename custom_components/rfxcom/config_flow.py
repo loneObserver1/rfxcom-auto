@@ -386,7 +386,7 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_user(import_info)
 
     @staticmethod
-    async def async_get_options_flow(
+    def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Retourne le gestionnaire de flux d'options."""

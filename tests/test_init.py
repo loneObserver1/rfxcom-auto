@@ -1,5 +1,6 @@
 """Tests pour __init__.py."""
 import pytest
+import logging
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 import sys
 
@@ -26,8 +27,12 @@ sys.modules['custom_components.rfxcom.services'] = MagicMock()
 sys.modules['custom_components.rfxcom.services'].async_setup_services = mock_async_setup_services
 sys.modules['custom_components.rfxcom.services'].async_unload_services = mock_async_unload_services
 
-from custom_components.rfxcom import async_setup, async_setup_entry, async_unload_entry
-from custom_components.rfxcom.const import DOMAIN
+# Mock log_handler
+sys.modules['custom_components.rfxcom.log_handler'] = MagicMock()
+sys.modules['custom_components.rfxcom.log_handler'].setup_log_handler = MagicMock(return_value=MagicMock())
+
+from custom_components.rfxcom import async_setup, async_setup_entry, async_unload_entry, _update_log_level, async_update_options
+from custom_components.rfxcom.const import DOMAIN, CONF_DEBUG, DEFAULT_DEBUG
 
 
 @pytest.fixture
@@ -126,4 +131,29 @@ class TestInit:
         assert result is True
         assert "entry1" not in mock_hass.data[DOMAIN]
         assert "entry2" in mock_hass.data[DOMAIN]  # L'autre entrée doit rester
+
+    def test_update_log_level_debug(self):
+        """Test de la mise à jour du niveau de log en mode debug."""
+        _update_log_level(True)
+        logger = logging.getLogger("custom_components.rfxcom")
+        assert logger.level == logging.DEBUG
+
+    def test_update_log_level_info(self):
+        """Test de la mise à jour du niveau de log en mode info."""
+        _update_log_level(False)
+        logger = logging.getLogger("custom_components.rfxcom")
+        assert logger.level == logging.INFO
+
+    @pytest.mark.asyncio
+    async def test_async_update_options(self):
+        """Test de la mise à jour des options."""
+        hass = MagicMock()
+        entry = Mock()
+        entry.options = {CONF_DEBUG: True}
+        
+        await async_update_options(hass, entry)
+        
+        # Vérifier que le niveau de log a été mis à jour
+        logger = logging.getLogger("custom_components.rfxcom")
+        assert logger.level == logging.DEBUG
 
