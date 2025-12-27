@@ -588,10 +588,15 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 },
             )
         
-        # Si l'utilisateur veut effacer les logs
-        if user_input.get("clear_logs"):
+        # Gérer les actions
+        action = user_input.get("action")
+        if action == "clear":
             clear_logs()
             return await self.async_step_view_logs()
+        elif action == "refresh":
+            return await self.async_step_view_logs()
+        elif action == "back" or not action:
+            return await self.async_step_init()
         
         return await self.async_step_init()
 
