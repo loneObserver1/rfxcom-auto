@@ -112,7 +112,7 @@ class RFXCOMTemperatureSensor(
                     if self._native_value != temp:
                         _LOGGER.debug(
                             "Température mise à jour: %s = %.1f°C (était %.1f°C)",
-                            self.name,
+                            self._attr_name,
                             temp,
                             self._native_value,
                         )
@@ -161,7 +161,7 @@ class RFXCOMHumiditySensor(
                     if self._native_value != hum_int:
                         _LOGGER.debug(
                             "Humidité mise à jour: %s = %s%% (était %s%%)",
-                            self.name,
+                            self._attr_name,
                             hum_int,
                             self._native_value,
                         )

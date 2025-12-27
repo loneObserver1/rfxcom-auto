@@ -49,6 +49,8 @@ class MockHass:
     def __init__(self):
         self.async_add_executor_job = AsyncMock()
         self.config_entries = MagicMock()
+        self.config_entries.async_update_entry = AsyncMock()
+        self.config_entries.async_reload = AsyncMock()
 
 
 class MockEntry:
@@ -126,6 +128,8 @@ class TestAutoRegistry:
             {const.CONF_AUTO_REGISTRY: True}
         )
         coordinator = RFXCOMCoordinator(hass, entry)
+        coordinator.entry = entry
+        coordinator.hass = hass
         
         device_info = {
             const.CONF_PROTOCOL: const.PROTOCOL_ARC,
@@ -134,10 +138,19 @@ class TestAutoRegistry:
         }
         
         unique_id = f"{device_info[const.CONF_PROTOCOL]}_{device_info.get(const.CONF_HOUSE_CODE, '')}_{device_info.get(const.CONF_UNIT_CODE, '')}"
+        
+        # S'assurer que entry.options est modifiable
+        if "devices" not in entry.options:
+            entry.options["devices"] = []
+        
         await coordinator._auto_register_device(device_info, unique_id)
         
-        # Vérifier que l'appareil a été ajouté aux options
-        devices = entry.options.get("devices", [])
+        # Vérifier que async_update_entry a été appelé
+        assert hass.config_entries.async_update_entry.called
+        call_args = hass.config_entries.async_update_entry.call_args
+        assert call_args is not None
+        updated_options = call_args[1].get("options", {})
+        devices = updated_options.get("devices", [])
         assert len(devices) > 0
         assert devices[0][const.CONF_PROTOCOL] == const.PROTOCOL_ARC
 
@@ -160,25 +173,21 @@ class TestAutoRegistry:
         
         unique_id = f"{device_info[const.CONF_PROTOCOL]}_{device_info[const.CONF_DEVICE_ID]}"
         
-        # Mock async_update_entry et async_reload
-        entry.async_update_entry = AsyncMock()
-        hass.config_entries.async_reload = AsyncMock()
-        
         # S'assurer que entry.options est modifiable
         if "devices" not in entry.options:
             entry.options["devices"] = []
         
         await coordinator._auto_register_device(device_info, unique_id)
         
-        # Vérifier via async_update_entry
-        assert entry.async_update_entry.called
-        call_args = entry.async_update_entry.call_args
-        if call_args:
-            updated_options = call_args[1].get("options", {})
-            devices = updated_options.get("devices", [])
-            if len(devices) > 0:
-                assert devices[0][const.CONF_PROTOCOL] == const.PROTOCOL_TEMP_HUM
-                assert "sensor_data" in devices[0]
+        # Vérifier que async_update_entry a été appelé
+        assert hass.config_entries.async_update_entry.called
+        call_args = hass.config_entries.async_update_entry.call_args
+        assert call_args is not None
+        updated_options = call_args[1].get("options", {})
+        devices = updated_options.get("devices", [])
+        assert len(devices) > 0
+        assert devices[0][const.CONF_PROTOCOL] == const.PROTOCOL_TEMP_HUM
+        assert "sensor_data" in devices[0]
 
     @pytest.mark.asyncio
     async def test_auto_register_device_already_exists(self):
