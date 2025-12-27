@@ -40,14 +40,15 @@
       "unknown": "Une erreur inattendue s'est produite"
     },
     "abort": {
-      "already_configured": "L'appareil est déjà configuré"
+      "already_configured": "L'appareil est déjà configuré",
+      "single_instance_allowed": "Une seule configuration RFXCOM est autorisée. Veuillez utiliser les options de l'intégration existante pour ajouter des appareils."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Options RFXCOM",
-        "description": "Gérez vos appareils RFXCOM et les paramètres"
+        "description": "Gérez vos appareils RFXCOM et les paramètres\n\n**Appareils configurés ({devices_count}):**\n{devices_list}\n\n**Auto-détection:** {auto_registry_status}\n\nSélectionnez une action ci-dessous :"
       },
       "add_device": {
         "title": "Ajouter un appareil",

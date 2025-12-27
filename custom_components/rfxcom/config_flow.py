@@ -181,6 +181,11 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Étape initiale de configuration."""
+        # Vérifier qu'il n'existe qu'une seule configuration
+        existing_entries = self._async_current_entries()
+        if existing_entries:
+            return self.async_abort(reason="single_instance_allowed")
+        
         if user_input is None:
             # Détecter automatiquement les ports USB disponibles
             try:
@@ -365,33 +370,41 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         auto_registry = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
 
         if user_input is None:
-            # Créer les options pour le sélecteur
-            options = ["add", "auto_registry"]
+            # Créer les options pour le menu
+            # Mettre "Ajouter un appareil" en premier pour qu'il soit bien visible
+            options = ["add"]
             option_labels = {
-                "add": "➕ Ajouter un appareil",
-                "auto_registry": f"🔍 Auto-détection: {'Activée' if auto_registry else 'Désactivée'}",
+                "add": "➕ Ajouter un nouvel appareil",
             }
+            
+            # Ajouter l'option auto-registry
+            options.append("auto_registry")
+            option_labels["auto_registry"] = f"🔍 Auto-détection: {'Activée' if auto_registry else 'Désactivée'}"
 
+            # Ajouter les appareils existants
             for idx, device in enumerate(devices):
                 device_name = device.get("name", f"Appareil {idx+1}")
+                protocol = device.get("protocol", "N/A")
                 options.append(f"edit_{idx}")
                 options.append(f"delete_{idx}")
-                option_labels[f"edit_{idx}"] = f"✏️ Modifier: {device_name}"
-                option_labels[f"delete_{idx}"] = f"🗑️ Supprimer: {device_name}"
+                option_labels[f"edit_{idx}"] = f"✏️ Modifier: {device_name} ({protocol})"
+                option_labels[f"delete_{idx}"] = f"🗑️ Supprimer: {device_name} ({protocol})"
 
             schema = vol.Schema({
-                vol.Required("action"): vol.In(options),
+                vol.Required("action", description={"suggested_value": "add"}): vol.In(options),
             })
+
+            devices_list = "\n".join([
+                f"  • {d.get('name', 'Sans nom')} ({d.get('protocol', 'N/A')})"
+                for d in devices
+            ]) if devices else "  Aucun appareil configuré"
 
             return self.async_show_form(
                 step_id="init",
                 data_schema=schema,
                 description_placeholders={
                     "devices_count": str(len(devices)),
-                    "devices_list": "\n".join([
-                        f"- {d.get('name', 'Sans nom')} ({d.get('protocol', 'N/A')})"
-                        for d in devices
-                    ]) if devices else "Aucun appareil configuré",
+                    "devices_list": devices_list,
                     "auto_registry_status": "Activée" if auto_registry else "Désactivée",
                 },
             )
