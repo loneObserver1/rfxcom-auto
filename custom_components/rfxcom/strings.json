@@ -54,13 +54,13 @@
       },
       "add_device": {
         "title": "Ajouter un appareil",
-        "description": "Ajoutez un nouvel appareil RFXCOM",
+        "description": "Ajoutez un nouvel appareil RFXCOM. Sélectionnez 'auto' pour la détection automatique du protocole.",
         "data": {
           "name": "Nom de l'appareil",
-          "protocol": "Protocole",
-          "device_id": "ID de l'appareil (hex, pour Lighting2-6)",
-          "house_code": "Code maison (A-P ou hex, pour Lighting1)",
-          "unit_code": "Code unité (1-16, pour Lighting1 ou optionnel pour Lighting2-6)"
+          "protocol": "Protocole (ou 'auto' pour détection automatique)",
+          "device_id": "ID de l'appareil (pour AC et autres)",
+          "house_code": "Code maison (pour ARC et Lighting1)",
+          "unit_code": "Code unité (pour ARC et Lighting1)"
         }
       },
       "edit_device": {
