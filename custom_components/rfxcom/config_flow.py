@@ -438,7 +438,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 option_labels[f"delete_{idx}"] = f"🗑️ Supprimer: {device_name} ({protocol})"
 
             schema = vol.Schema({
-                vol.Required("action", description={"suggested_value": "add"}): vol.In(options),
+                vol.Required("action", description={"suggested_value": "add"}): vol.In(option_labels),
             })
 
             devices_list = "\n".join([
