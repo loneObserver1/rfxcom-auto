@@ -1,7 +1,28 @@
 """Tests pour les entités switch."""
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from homeassistant.components.switch import SwitchEntity
+from unittest.mock import Mock, AsyncMock, MagicMock, patch
+
+# Mock CoordinatorEntity et SwitchEntity avant l'import
+class MockCoordinatorEntity:
+    def __class_getitem__(cls, item):
+        return MockCoordinatorEntity
+    
+    def __init__(self, coordinator):
+        self.coordinator = coordinator
+
+class MockSwitchEntity:
+    pass
+
+# Appliquer les mocks
+import sys
+sys.modules['homeassistant.helpers.update_coordinator'].CoordinatorEntity = MockCoordinatorEntity
+sys.modules['homeassistant.components.switch'].SwitchEntity = MockSwitchEntity
+
+# Mock async_get_last_state
+async def mock_async_get_last_state(hass, entity_id):
+    return None
+
+sys.modules['homeassistant.helpers.restore_state'].async_get_last_state = mock_async_get_last_state
 
 from custom_components.rfxcom.switch import RFXCOMSwitch
 from custom_components.rfxcom.const import PROTOCOL_ARC, CMD_ON, CMD_OFF
@@ -19,7 +40,7 @@ def mock_coordinator():
 @pytest.fixture
 def switch(mock_coordinator):
     """Créer un switch pour les tests."""
-    return RFXCOMSwitch(
+    switch = RFXCOMSwitch(
         coordinator=mock_coordinator,
         name="Test Switch",
         protocol=PROTOCOL_ARC,
@@ -27,6 +48,9 @@ def switch(mock_coordinator):
         unit_code="1",
         unique_id="test_switch_1",
     )
+    # Mock async_write_ha_state
+    switch.async_write_ha_state = AsyncMock()
+    return switch
 
 
 class TestRFXCOMSwitch:
@@ -34,7 +58,7 @@ class TestRFXCOMSwitch:
 
     def test_initialization(self, switch):
         """Test d'initialisation."""
-        assert switch.name == "Test Switch"
+        assert switch._attr_name == "Test Switch"
         assert switch._protocol == PROTOCOL_ARC
         assert switch._house_code == "A"
         assert switch._unit_code == "1"
@@ -87,4 +111,3 @@ class TestRFXCOMSwitch:
         
         # L'état ne devrait pas changer en cas d'échec
         assert switch._is_on is False
-

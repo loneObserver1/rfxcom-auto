@@ -8,8 +8,8 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.restore_state import async_get_last_state
 
 from .const import (
     DOMAIN,
@@ -62,9 +62,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class RFXCOMSwitch(
-    CoordinatorEntity[RFXCOMCoordinator], SwitchEntity, RestoreEntity
-):
+class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
     """Représente un interrupteur RFXCOM."""
 
     def __init__(
@@ -92,7 +90,7 @@ class RFXCOMSwitch(
         await super().async_added_to_hass()
         
         # Restaurer l'état précédent
-        if (last_state := await self.async_get_last_state()) is not None:
+        if (last_state := await async_get_last_state(self.hass, self.entity_id)) is not None:
             self._is_on = last_state.state == "on"
 
     @property
@@ -104,7 +102,7 @@ class RFXCOMSwitch(
         """Allume l'interrupteur."""
         _LOGGER.debug(
             "Turn ON: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
-            self.name,
+            self._attr_name,
             self._protocol,
             self._device_id,
             self._house_code,
@@ -121,15 +119,15 @@ class RFXCOMSwitch(
         if success:
             self._is_on = True
             self.async_write_ha_state()
-            _LOGGER.debug("État mis à jour: ON pour %s", self.name)
+            _LOGGER.debug("État mis à jour: ON pour %s", self._attr_name)
         else:
-            _LOGGER.error("Échec de l'envoi de la commande ON pour %s", self.name)
+            _LOGGER.error("Échec de l'envoi de la commande ON pour %s", self._attr_name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Éteint l'interrupteur."""
         _LOGGER.debug(
             "Turn OFF: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
-            self.name,
+            self._attr_name,
             self._protocol,
             self._device_id,
             self._house_code,
@@ -146,7 +144,7 @@ class RFXCOMSwitch(
         if success:
             self._is_on = False
             self.async_write_ha_state()
-            _LOGGER.debug("État mis à jour: OFF pour %s", self.name)
+            _LOGGER.debug("État mis à jour: OFF pour %s", self._attr_name)
         else:
-            _LOGGER.error("Échec de l'envoi de la commande OFF pour %s", self.name)
+            _LOGGER.error("Échec de l'envoi de la commande OFF pour %s", self._attr_name)
 
