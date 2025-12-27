@@ -400,7 +400,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         # Level (0x0F = 100% pour ON, 0x00 pour OFF)
         level = 0x0F if command == CMD_ON else 0x00
 
-        # Construire le paquet: 0B 11 [subtype] [id(4)] [unit] [cmd] [level] 00
+        # Construire le paquet: 0B 11 [subtype] [id(4)] [unit] [cmd] [level] [signal]
         return bytes([
             0x0B,  # Longueur
             PACKET_TYPE_LIGHTING2,  # 0x11
@@ -410,7 +410,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             unit_code,
             cmd_byte,
             level,
-            0x00,  # Signal level
+            0x80,  # Signal level (0x80 = -56dBm standard)
         ])
 
     def _build_lighting3_command(
@@ -574,9 +574,11 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
 
             # Compléter ou tronquer à la longueur souhaitée
             if len(device_bytes) < length:
-                device_bytes = device_bytes + bytes(length - len(device_bytes))
+                # Compléter avec des zéros au début (padding left)
+                device_bytes = bytes(length - len(device_bytes)) + device_bytes
             elif len(device_bytes) > length:
-                device_bytes = device_bytes[:length]
+                # Tronquer en gardant les bytes de droite (LSB)
+                device_bytes = device_bytes[-length:]
 
             return device_bytes
         except ValueError:

@@ -69,7 +69,8 @@
         "description": "{instructions}",
         "data": {
           "name": "Nom de l'appareil",
-          "protocol": "Protocole"
+          "protocol": "Protocole",
+          "device_type": "Type d'appareil"
         }
       },
       "pair_device_codes": {

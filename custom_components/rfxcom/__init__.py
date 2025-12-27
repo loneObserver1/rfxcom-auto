@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 # Handler global pour capturer les logs
 _log_handler = None
 
-PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.SENSOR, Platform.COVER]
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -47,6 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "custom_components.rfxcom.coordinator",
             "custom_components.rfxcom.switch",
             "custom_components.rfxcom.sensor",
+            "custom_components.rfxcom.cover",
             "custom_components.rfxcom.services",
             "custom_components.rfxcom.config_flow",
         ]:
@@ -111,6 +112,7 @@ def _update_log_level(debug_enabled: bool) -> None:
         "custom_components.rfxcom.coordinator",
         "custom_components.rfxcom.switch",
         "custom_components.rfxcom.sensor",
+        "custom_components.rfxcom.cover",
         "custom_components.rfxcom.services",
         "custom_components.rfxcom.config_flow",
     ]:

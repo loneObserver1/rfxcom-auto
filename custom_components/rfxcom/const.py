@@ -90,6 +90,7 @@ PROTOCOLS_SWITCH = [
 # Types d'appareils
 DEVICE_TYPE_SWITCH = "switch"
 DEVICE_TYPE_LIGHT = "light"
+DEVICE_TYPE_COVER = "cover"
 DEVICE_TYPE_SENSOR = "sensor"
 
 # Commandes

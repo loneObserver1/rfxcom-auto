@@ -21,6 +21,8 @@ from .const import (
     DEFAULT_NETWORK_PORT,
     CONNECTION_TYPE_USB,
     CONNECTION_TYPE_NETWORK,
+    DEVICE_TYPE_SWITCH,
+    DEVICE_TYPE_COVER,
     PROTOCOL_AC,
     PROTOCOL_ARC,
     PROTOCOL_TEMP_HUM,
@@ -639,11 +641,12 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         lighting6_protocols = [PROTOCOL_BLYSS]
         
         if user_input is None:
-            # Étape 1: Sélectionner le protocole et le nom
+            # Étape 1: Sélectionner le protocole, le nom et le type d'appareil
             protocol_options = [PROTOCOL_AUTO] + enabled_protocols
             schema = vol.Schema({
                 vol.Required("name"): str,
                 vol.Required(CONF_PROTOCOL): vol.In(protocol_options),
+                vol.Optional("device_type", default="switch"): vol.In(["switch", "cover"]),
             })
             return self.async_show_form(
                 step_id="add_device_manual", data_schema=schema
@@ -704,10 +707,12 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             # Pour "auto", on crée un appareil avec protocol="auto"
             # L'appareil sera configuré automatiquement lors de la première détection
+            device_type = user_input.get("device_type", DEVICE_TYPE_SWITCH)
             device_config = {
                 "name": user_input["name"],
                 CONF_PROTOCOL: PROTOCOL_AUTO,
                 "auto_detect": True,
+                "device_type": device_type,
             }
             devices = self.config_entry.options.get("devices", [])
             devices.append(device_config)
@@ -804,6 +809,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             schema = vol.Schema({
                 vol.Required("name"): str,
                 vol.Required(CONF_PROTOCOL): vol.In(protocol_options),
+                vol.Optional("device_type", default="switch"): vol.In(["switch", "cover"]),
             })
             return self.async_show_form(
                 step_id="pair_device",
@@ -817,9 +823,11 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             )
         
         # Stocker les données pour l'étape suivante
+        device_type = user_input.get("device_type", DEVICE_TYPE_SWITCH)
         self._pairing_data = {
             "name": user_input["name"],
             "protocol": user_input[CONF_PROTOCOL],
+            "device_type": device_type,
         }
         
         # Rediriger vers l'étape suivante selon le protocole
@@ -1095,9 +1103,11 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             
             # Créer la configuration de l'appareil avec les codes/ID générés
             devices = self.config_entry.options.get("devices", [])
+            device_type = self._pairing_data.get("device_type", DEVICE_TYPE_SWITCH)
             device_config = {
                 "name": name,
                 CONF_PROTOCOL: protocol,
+                "device_type": device_type,
             }
             
             if protocol in lighting1_protocols:
