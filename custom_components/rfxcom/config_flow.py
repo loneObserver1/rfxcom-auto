@@ -556,15 +556,34 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             else:
                 logs_text = "Aucun log disponible."
             
+            # Limiter la taille pour l'affichage (Home Assistant a des limites)
+            # Afficher les 200 derniers logs maximum
+            if logs and len(logs) > 200:
+                logs_display = logs[-200:]
+                logs_text = f"... ({len(logs) - 200} logs plus anciens) ...\n\n" + "\n".join([
+                    f"[{log['timestamp']}] [{log['level']}] {log['message']}"
+                    for log in logs_display
+                ])
+            elif logs:
+                logs_text = "\n".join([
+                    f"[{log['timestamp']}] [{log['level']}] {log['message']}"
+                    for log in logs
+                ])
+            
+            # Créer un schéma avec les actions
             schema = vol.Schema({
-                vol.Optional("clear_logs", default=False): bool,
+                vol.Required("action", default="back"): vol.In({
+                    "back": "← Retour",
+                    "clear": "🗑️ Effacer les logs",
+                    "refresh": "🔄 Rafraîchir",
+                }),
             })
             
             return self.async_show_form(
                 step_id="view_logs",
                 data_schema=schema,
                 description_placeholders={
-                    "logs": logs_text,
+                    "logs": logs_text[:50000] if logs_text else "Aucun log disponible.",  # Limite de 50KB
                     "logs_count": str(len(logs)),
                 },
             )
