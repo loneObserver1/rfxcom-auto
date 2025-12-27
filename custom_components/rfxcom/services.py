@@ -11,8 +11,7 @@ import voluptuous as vol
 
 from .const import (
     DOMAIN,
-    PROTOCOL_AC,
-    PROTOCOL_ARC,
+    PROTOCOLS_SWITCH,
     PROTOCOL_TEMP_HUM,
     CONF_PROTOCOL,
     CONF_DEVICE_ID,
@@ -26,7 +25,7 @@ SERVICE_PAIR_DEVICE = "pair_device"
 
 PAIR_DEVICE_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_PROTOCOL): vol.In([PROTOCOL_AC, PROTOCOL_ARC]),
+        vol.Required(CONF_PROTOCOL): vol.In(PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
         vol.Required("name"): cv.string,
         vol.Optional(CONF_DEVICE_ID): cv.string,
         vol.Optional(CONF_HOUSE_CODE): cv.string,
@@ -57,15 +56,47 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
 
         # Validation selon le protocole
-        if protocol == PROTOCOL_AC and not device_id:
-            _LOGGER.error("device_id est requis pour le protocole AC")
-            return
-        if protocol == PROTOCOL_ARC and (not house_code or not unit_code):
-            _LOGGER.error("house_code et unit_code sont requis pour le protocole ARC")
-            return
-        if protocol == PROTOCOL_TEMP_HUM and not device_id:
-            _LOGGER.error("device_id est requis pour le protocole TEMP_HUM")
-            return
+        from .const import (
+            PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
+            PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,
+            PROTOCOL_PHILIPS, PROTOCOL_ENERGENIE, PROTOCOL_ENERGENIE_5,
+            PROTOCOL_COCOSTICK, PROTOCOL_AC, PROTOCOL_HOMEEASY_EU,
+            PROTOCOL_ANSLUT, PROTOCOL_KAMBROOK, PROTOCOL_IKEA_KOPPLA,
+            PROTOCOL_PT2262, PROTOCOL_LIGHTWAVERF, PROTOCOL_EMW100_GDO,
+            PROTOCOL_BBSB, PROTOCOL_RSL, PROTOCOL_LIVOLO, PROTOCOL_TRC02,
+            PROTOCOL_AOKE, PROTOCOL_RGB_TRC02, PROTOCOL_BLYSS
+        )
+        
+        lighting1_protocols = [
+            PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
+            PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,
+            PROTOCOL_PHILIPS, PROTOCOL_ENERGENIE, PROTOCOL_ENERGENIE_5,
+            PROTOCOL_COCOSTICK
+        ]
+        lighting2_protocols = [
+            PROTOCOL_AC, PROTOCOL_HOMEEASY_EU, PROTOCOL_ANSLUT, PROTOCOL_KAMBROOK
+        ]
+        lighting3_protocols = [PROTOCOL_IKEA_KOPPLA]
+        lighting4_protocols = [PROTOCOL_PT2262]
+        lighting5_protocols = [
+            PROTOCOL_LIGHTWAVERF, PROTOCOL_EMW100_GDO, PROTOCOL_BBSB,
+            PROTOCOL_RSL, PROTOCOL_LIVOLO, PROTOCOL_TRC02, PROTOCOL_AOKE,
+            PROTOCOL_RGB_TRC02
+        ]
+        lighting6_protocols = [PROTOCOL_BLYSS]
+        
+        if protocol in lighting1_protocols:
+            if not house_code or not unit_code:
+                _LOGGER.error("house_code et unit_code sont requis pour le protocole %s", protocol)
+                return
+        elif protocol in lighting2_protocols + lighting3_protocols + lighting4_protocols + lighting5_protocols + lighting6_protocols:
+            if not device_id:
+                _LOGGER.error("device_id est requis pour le protocole %s", protocol)
+                return
+        elif protocol == PROTOCOL_TEMP_HUM:
+            if not device_id:
+                _LOGGER.error("device_id est requis pour le protocole TEMP_HUM")
+                return
 
         # Trouver l'entrée de configuration RFXCOM
         entries = hass.config_entries.async_entries(DOMAIN)
@@ -87,11 +118,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             CONF_PROTOCOL: protocol,
         }
 
-        if protocol == PROTOCOL_AC:
-            device_config[CONF_DEVICE_ID] = device_id
-        elif protocol == PROTOCOL_ARC:
+        if protocol in lighting1_protocols:
             device_config[CONF_HOUSE_CODE] = house_code
             device_config[CONF_UNIT_CODE] = unit_code
+        elif protocol in lighting2_protocols + lighting3_protocols + lighting4_protocols + lighting5_protocols + lighting6_protocols:
+            device_config[CONF_DEVICE_ID] = device_id
+            if unit_code:
+                device_config[CONF_UNIT_CODE] = unit_code
         elif protocol == PROTOCOL_TEMP_HUM:
             device_config[CONF_DEVICE_ID] = device_id
             # Les données du capteur seront mises à jour automatiquement lors de la réception

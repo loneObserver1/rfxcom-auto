@@ -24,6 +24,31 @@ from .const import (
     PROTOCOL_AC,
     PROTOCOL_ARC,
     PROTOCOL_TEMP_HUM,
+    PROTOCOLS_SWITCH,
+    PROTOCOL_X10,
+    PROTOCOL_ABICOD,
+    PROTOCOL_WAVEMAN,
+    PROTOCOL_EMW100,
+    PROTOCOL_IMPULS,
+    PROTOCOL_RISINGSUN,
+    PROTOCOL_PHILIPS,
+    PROTOCOL_ENERGENIE,
+    PROTOCOL_ENERGENIE_5,
+    PROTOCOL_COCOSTICK,
+    PROTOCOL_HOMEEASY_EU,
+    PROTOCOL_ANSLUT,
+    PROTOCOL_KAMBROOK,
+    PROTOCOL_IKEA_KOPPLA,
+    PROTOCOL_PT2262,
+    PROTOCOL_LIGHTWAVERF,
+    PROTOCOL_EMW100_GDO,
+    PROTOCOL_BBSB,
+    PROTOCOL_RSL,
+    PROTOCOL_LIVOLO,
+    PROTOCOL_TRC02,
+    PROTOCOL_AOKE,
+    PROTOCOL_RGB_TRC02,
+    PROTOCOL_BLYSS,
     CONF_BAUDRATE,
     CONF_CONNECTION_TYPE,
     CONF_HOST,
@@ -140,7 +165,7 @@ STEP_USER_DATA_SCHEMA_NETWORK = vol.Schema(
 
 STEP_DEVICE_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_PROTOCOL): vol.In([PROTOCOL_AC, PROTOCOL_ARC, PROTOCOL_TEMP_HUM]),
+        vol.Required(CONF_PROTOCOL): vol.In(PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
         vol.Optional(CONF_DEVICE_ID): str,
         vol.Optional(CONF_HOUSE_CODE): str,
         vol.Optional(CONF_UNIT_CODE): str,
@@ -377,16 +402,39 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
 
         errors = {}
 
-        # Validation
+        # Validation selon le protocole
         protocol = user_input[CONF_PROTOCOL]
-        if protocol == PROTOCOL_AC and not user_input.get(CONF_DEVICE_ID):
-            errors[CONF_DEVICE_ID] = "required_for_ac"
-        elif protocol == PROTOCOL_ARC and (
-            not user_input.get(CONF_HOUSE_CODE) or not user_input.get(CONF_UNIT_CODE)
-        ):
-            errors["base"] = "arc_requires_codes"
-        elif protocol == PROTOCOL_TEMP_HUM and not user_input.get(CONF_DEVICE_ID):
-            errors[CONF_DEVICE_ID] = "required_for_temp_hum"
+        
+        # Protocoles Lighting1 (house_code + unit_code requis)
+        lighting1_protocols = [
+            PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
+            PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,
+            PROTOCOL_PHILIPS, PROTOCOL_ENERGENIE, PROTOCOL_ENERGENIE_5,
+            PROTOCOL_COCOSTICK
+        ]
+        
+        # Protocoles Lighting2-6 (device_id requis, unit_code optionnel)
+        lighting2_protocols = [
+            PROTOCOL_AC, PROTOCOL_HOMEEASY_EU, PROTOCOL_ANSLUT, PROTOCOL_KAMBROOK
+        ]
+        lighting3_protocols = [PROTOCOL_IKEA_KOPPLA]
+        lighting4_protocols = [PROTOCOL_PT2262]
+        lighting5_protocols = [
+            PROTOCOL_LIGHTWAVERF, PROTOCOL_EMW100_GDO, PROTOCOL_BBSB,
+            PROTOCOL_RSL, PROTOCOL_LIVOLO, PROTOCOL_TRC02, PROTOCOL_AOKE,
+            PROTOCOL_RGB_TRC02
+        ]
+        lighting6_protocols = [PROTOCOL_BLYSS]
+        
+        if protocol in lighting1_protocols:
+            if not user_input.get(CONF_HOUSE_CODE) or not user_input.get(CONF_UNIT_CODE):
+                errors["base"] = "lighting1_requires_codes"
+        elif protocol in lighting2_protocols + lighting3_protocols + lighting4_protocols + lighting5_protocols + lighting6_protocols:
+            if not user_input.get(CONF_DEVICE_ID):
+                errors[CONF_DEVICE_ID] = "required_for_device_id"
+        elif protocol == PROTOCOL_TEMP_HUM:
+            if not user_input.get(CONF_DEVICE_ID):
+                errors[CONF_DEVICE_ID] = "required_for_temp_hum"
 
         if not errors:
             # Récupérer les appareils existants
@@ -398,11 +446,14 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_PROTOCOL: protocol,
             }
 
-            if protocol == PROTOCOL_AC:
-                device_config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
-            elif protocol == PROTOCOL_ARC:
+            # Configurer selon le type de protocole
+            if protocol in lighting1_protocols:
                 device_config[CONF_HOUSE_CODE] = user_input[CONF_HOUSE_CODE]
                 device_config[CONF_UNIT_CODE] = user_input[CONF_UNIT_CODE]
+            elif protocol in lighting2_protocols + lighting3_protocols + lighting4_protocols + lighting5_protocols + lighting6_protocols:
+                device_config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
+                if user_input.get(CONF_UNIT_CODE):
+                    device_config[CONF_UNIT_CODE] = user_input[CONF_UNIT_CODE]
             elif protocol == PROTOCOL_TEMP_HUM:
                 device_config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
                 # Les données du capteur seront mises à jour automatiquement lors de la réception
@@ -436,7 +487,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             # Pré-remplir le formulaire avec les valeurs existantes
             schema = vol.Schema({
                 vol.Required("name", default=device.get("name")): str,
-                vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In([PROTOCOL_AC, PROTOCOL_ARC, PROTOCOL_TEMP_HUM]),
+                vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In(PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
                 vol.Optional(CONF_DEVICE_ID, default=device.get(CONF_DEVICE_ID, "")): str,
                 vol.Optional(CONF_HOUSE_CODE, default=device.get(CONF_HOUSE_CODE, "")): str,
                 vol.Optional(CONF_UNIT_CODE, default=device.get(CONF_UNIT_CODE, "")): str,
@@ -450,12 +501,26 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         device["name"] = user_input["name"]
         device[CONF_PROTOCOL] = protocol
         
-        if protocol == PROTOCOL_AC:
-            device[CONF_DEVICE_ID] = user_input.get(CONF_DEVICE_ID, "")
-            device.pop(CONF_HOUSE_CODE, None)
-            device.pop(CONF_UNIT_CODE, None)
-            device.pop("sensor_data", None)
-        elif protocol == PROTOCOL_ARC:
+        # Définir les listes de protocoles (réutiliser celles de add_device)
+        lighting1_protocols = [
+            PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
+            PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,
+            PROTOCOL_PHILIPS, PROTOCOL_ENERGENIE, PROTOCOL_ENERGENIE_5,
+            PROTOCOL_COCOSTICK
+        ]
+        lighting2_protocols = [
+            PROTOCOL_AC, PROTOCOL_HOMEEASY_EU, PROTOCOL_ANSLUT, PROTOCOL_KAMBROOK
+        ]
+        lighting3_protocols = [PROTOCOL_IKEA_KOPPLA]
+        lighting4_protocols = [PROTOCOL_PT2262]
+        lighting5_protocols = [
+            PROTOCOL_LIGHTWAVERF, PROTOCOL_EMW100_GDO, PROTOCOL_BBSB,
+            PROTOCOL_RSL, PROTOCOL_LIVOLO, PROTOCOL_TRC02, PROTOCOL_AOKE,
+            PROTOCOL_RGB_TRC02
+        ]
+        lighting6_protocols = [PROTOCOL_BLYSS]
+        
+        if protocol in lighting1_protocols:
             device[CONF_HOUSE_CODE] = user_input.get(CONF_HOUSE_CODE, "")
             device[CONF_UNIT_CODE] = user_input.get(CONF_UNIT_CODE, "")
             device.pop(CONF_DEVICE_ID, None)

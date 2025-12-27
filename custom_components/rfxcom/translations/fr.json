@@ -78,7 +78,10 @@
     },
     "error": {
       "required_for_ac": "L'ID de l'appareil est requis pour le protocole AC",
-      "arc_requires_codes": "Le code maison et le code unité sont requis pour le protocole ARC"
+      "arc_requires_codes": "Le code maison et le code unité sont requis pour le protocole ARC",
+      "lighting1_requires_codes": "Le code maison et le code unité sont requis pour ce protocole",
+      "required_for_device_id": "L'ID de l'appareil est requis pour ce protocole",
+      "required_for_temp_hum": "L'ID de l'appareil est requis pour le protocole TEMP_HUM"
     }
   },
   "entity": {

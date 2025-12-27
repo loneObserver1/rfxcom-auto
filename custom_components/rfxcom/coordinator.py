@@ -21,9 +21,16 @@ from .const import (
     PROTOCOL_AC,
     PROTOCOL_ARC,
     PROTOCOL_TEMP_HUM,
+    PROTOCOLS_SWITCH,
+    PROTOCOL_TO_PACKET,
     CMD_ON,
     CMD_OFF,
     PACKET_TYPE_LIGHTING1,
+    PACKET_TYPE_LIGHTING2,
+    PACKET_TYPE_LIGHTING3,
+    PACKET_TYPE_LIGHTING4,
+    PACKET_TYPE_LIGHTING5,
+    PACKET_TYPE_LIGHTING6,
     PACKET_TYPE_TEMP_HUM,
     SUBTYPE_ARC,
     SUBTYPE_TH13,
@@ -161,20 +168,49 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
 
             try:
                 # Construction de la commande selon le protocole
-                if protocol == PROTOCOL_AC:
-                    _LOGGER.debug("Construction commande AC: device_id=%s", device_id)
-                    cmd_bytes = self._build_ac_command(device_id, command)
-                elif protocol == PROTOCOL_ARC:
-                    _LOGGER.debug(
-                        "Construction commande ARC: house_code=%s, unit_code=%s",
-                        house_code,
-                        unit_code,
+                if protocol not in PROTOCOL_TO_PACKET:
+                    _LOGGER.error("Protocole non supporté: %s", protocol)
+                    return False
+                
+                packet_type, subtype = PROTOCOL_TO_PACKET[protocol]
+                _LOGGER.debug(
+                    "Construction commande %s: packet_type=0x%02X, subtype=%s",
+                    protocol,
+                    packet_type,
+                    subtype,
+                )
+                
+                # Construire la commande selon le type de paquet
+                if packet_type == PACKET_TYPE_LIGHTING1:
+                    cmd_bytes = self._build_lighting1_command(
+                        protocol, subtype, house_code, unit_code, command
                     )
-                    cmd_bytes = self._build_arc_command(
-                        house_code, unit_code, command
+                elif packet_type == PACKET_TYPE_LIGHTING2:
+                    cmd_bytes = self._build_lighting2_command(
+                        protocol, subtype, device_id, command
+                    )
+                elif packet_type == PACKET_TYPE_LIGHTING3:
+                    cmd_bytes = self._build_lighting3_command(
+                        protocol, device_id, unit_code, command
+                    )
+                elif packet_type == PACKET_TYPE_LIGHTING4:
+                    cmd_bytes = self._build_lighting4_command(
+                        protocol, device_id, command
+                    )
+                elif packet_type == PACKET_TYPE_LIGHTING5:
+                    cmd_bytes = self._build_lighting5_command(
+                        protocol, subtype, device_id, unit_code, command
+                    )
+                elif packet_type == PACKET_TYPE_LIGHTING6:
+                    cmd_bytes = self._build_lighting6_command(
+                        protocol, device_id, command
                     )
                 else:
-                    _LOGGER.error("Protocole non supporté: %s", protocol)
+                    _LOGGER.error("Type de paquet non supporté: 0x%02X", packet_type)
+                    return False
+                
+                if not cmd_bytes:
+                    _LOGGER.error("Échec de la construction de la commande pour %s", protocol)
                     return False
                 
                 _LOGGER.debug("Commande construite: %s bytes, hex=%s", len(cmd_bytes), cmd_bytes.hex())
@@ -205,54 +241,31 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Erreur lors de l'envoi de la commande: %s", err)
                 return False
 
-    def _build_ac_command(self, device_id: str, command: str) -> bytes:
-        """Construit une commande AC."""
-        # Convertir l'ID de l'appareil en bytes (8 bytes)
-        device_bytes = self._hex_string_to_bytes(device_id, 8)
-        
-        # Commande AC: 0x0B (longueur) + 0x10 (type AC) + 8 bytes device + 1 byte command
-        cmd_byte = 0x01 if command == CMD_ON else 0x00
-        
-        return bytes([0x0B, 0x10, 0x00]) + device_bytes + bytes([cmd_byte])
-
-    def _build_arc_command(
-        self, house_code: str | None, unit_code: str | None, command: str
+    def _build_lighting1_command(
+        self,
+        protocol: str,
+        subtype: int,
+        house_code: str | None,
+        unit_code: str | None,
+        command: str,
     ) -> bytes:
-        """Construit une commande ARC selon le format RFXCOM.
+        """Construit une commande Lighting1 (X10, ARC, ABICOD, etc.).
         
-        Format: 07 10 01 62 41 01 01 00
-        - 07: longueur
-        - 10: Lighting1
-        - 01: subtype ARC
-        - 62: sequence number
-        - 41: house code (A = 0x41)
-        - 01: unit code
-        - 01: command (ON=0x01, OFF=0x00)
-        - 00: signal level
+        Format: [length] 0x10 [subtype] [seq] [house] [unit] [cmd] [signal]
         """
         # Incrémenter le numéro de séquence
-        old_seq = self._sequence_number
         self._sequence_number = (self._sequence_number + 1) % 256
-        _LOGGER.debug(
-            "ARC command: house_code=%s, unit_code=%s, command=%s, sequence=%s->%s",
-            house_code,
-            unit_code,
-            command,
-            old_seq,
-            self._sequence_number,
-        )
         
-        # Convertir house code (A=0x41, B=0x42, etc.)
+        # Convertir house code (A=0x41, B=0x42, etc. ou hex)
+        hc = 0x41  # Default to A
         if house_code:
             if len(house_code) == 1 and house_code.isalpha():
-                hc = ord(house_code.upper())  # A = 0x41, B = 0x42, etc.
+                hc = ord(house_code.upper())
             else:
                 try:
                     hc = int(house_code, 16) if house_code.startswith("0x") else int(house_code)
                 except ValueError:
-                    hc = 0x41  # Default to A
-        else:
-            hc = 0x41  # Default to A
+                    pass
         
         # Convertir unit code
         try:
@@ -263,15 +276,204 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
         
-        # Construire le paquet: 07 10 01 [seq] [house] [unit] [cmd] 00
+        # Construire le paquet: 07 10 [subtype] [seq] [house] [unit] [cmd] 00
         return bytes([
             0x07,  # Longueur
-            PACKET_TYPE_LIGHTING1,  # 0x10 Lighting1
-            SUBTYPE_ARC,  # 0x01 ARC
-            self._sequence_number,  # Sequence number
-            hc,  # House code
-            uc,  # Unit code
-            cmd_byte,  # Command
+            PACKET_TYPE_LIGHTING1,  # 0x10
+            subtype,
+            self._sequence_number,
+            hc,
+            uc,
+            cmd_byte,
+            0x00,  # Signal level
+        ])
+
+    def _build_lighting2_command(
+        self,
+        protocol: str,
+        subtype: int,
+        device_id: str | None,
+        command: str,
+    ) -> bytes:
+        """Construit une commande Lighting2 (AC, HomeEasy EU, etc.).
+        
+        Format: [length] 0x11 [subtype] [id(4)] [unit] [cmd] [level] [signal]
+        """
+        # Incrémenter le numéro de séquence
+        self._sequence_number = (self._sequence_number + 1) % 256
+        
+        # Convertir device_id en 4 bytes
+        device_bytes = self._hex_string_to_bytes(device_id or "00000000", 4)
+        
+        # Unit code (généralement 0 pour AC)
+        unit_code = 0
+        
+        # Commande
+        cmd_byte = 0x01 if command == CMD_ON else 0x00
+        
+        # Level (0x0F = 100% pour ON, 0x00 pour OFF)
+        level = 0x0F if command == CMD_ON else 0x00
+        
+        # Construire le paquet: 0B 11 [subtype] [id(4)] [unit] [cmd] [level] 00
+        return bytes([
+            0x0B,  # Longueur
+            PACKET_TYPE_LIGHTING2,  # 0x11
+            subtype,
+            self._sequence_number,
+        ]) + device_bytes + bytes([
+            unit_code,
+            cmd_byte,
+            level,
+            0x00,  # Signal level
+        ])
+
+    def _build_lighting3_command(
+        self,
+        protocol: str,
+        device_id: str | None,
+        unit_code: str | None,
+        command: str,
+    ) -> bytes:
+        """Construit une commande Lighting3 (Ikea Koppla).
+        
+        Format: [length] 0x12 [id(2)] [group] [unit] [cmd] [signal]
+        """
+        # Incrémenter le numéro de séquence
+        self._sequence_number = (self._sequence_number + 1) % 256
+        
+        # Convertir device_id en 2 bytes
+        device_bytes = self._hex_string_to_bytes(device_id or "0000", 2)
+        
+        # Group (généralement 0)
+        group = 0
+        
+        # Unit code
+        try:
+            uc = int(unit_code) if unit_code else 1
+        except (ValueError, TypeError):
+            uc = 1
+        
+        # Commande
+        cmd_byte = 0x01 if command == CMD_ON else 0x00
+        
+        # Construire le paquet: 08 12 [id(2)] [group] [unit] [cmd] 00
+        return bytes([
+            0x08,  # Longueur
+            PACKET_TYPE_LIGHTING3,  # 0x12
+            self._sequence_number,
+        ]) + device_bytes + bytes([
+            group,
+            uc,
+            cmd_byte,
+            0x00,  # Signal level
+        ])
+
+    def _build_lighting4_command(
+        self,
+        protocol: str,
+        device_id: str | None,
+        command: str,
+    ) -> bytes:
+        """Construit une commande Lighting4 (PT2262).
+        
+        Format: [length] 0x13 [id(3)] [cmd] [signal]
+        """
+        # Incrémenter le numéro de séquence
+        self._sequence_number = (self._sequence_number + 1) % 256
+        
+        # Convertir device_id en 3 bytes
+        device_bytes = self._hex_string_to_bytes(device_id or "000000", 3)
+        
+        # Commande
+        cmd_byte = 0x01 if command == CMD_ON else 0x00
+        
+        # Construire le paquet: 07 13 [id(3)] [cmd] 00
+        return bytes([
+            0x07,  # Longueur
+            PACKET_TYPE_LIGHTING4,  # 0x13
+            self._sequence_number,
+        ]) + device_bytes + bytes([
+            cmd_byte,
+            0x00,  # Signal level
+        ])
+
+    def _build_lighting5_command(
+        self,
+        protocol: str,
+        subtype: int,
+        device_id: str | None,
+        unit_code: str | None,
+        command: str,
+    ) -> bytes:
+        """Construit une commande Lighting5 (LightwaveRF, etc.).
+        
+        Format: [length] 0x14 [subtype] [id(3)] [unit] [cmd] [level] [signal]
+        """
+        # Incrémenter le numéro de séquence
+        self._sequence_number = (self._sequence_number + 1) % 256
+        
+        # Convertir device_id en 3 bytes
+        device_bytes = self._hex_string_to_bytes(device_id or "000000", 3)
+        
+        # Unit code
+        try:
+            uc = int(unit_code) if unit_code else 0
+        except (ValueError, TypeError):
+            uc = 0
+        
+        # Commande
+        cmd_byte = 0x01 if command == CMD_ON else 0x00
+        
+        # Level (0x0F = 100% pour ON, 0x00 pour OFF)
+        level = 0x0F if command == CMD_ON else 0x00
+        
+        # Construire le paquet: 0A 14 [subtype] [id(3)] [unit] [cmd] [level] 00
+        return bytes([
+            0x0A,  # Longueur
+            PACKET_TYPE_LIGHTING5,  # 0x14
+            subtype,
+            self._sequence_number,
+        ]) + device_bytes + bytes([
+            uc,
+            cmd_byte,
+            level,
+            0x00,  # Signal level
+        ])
+
+    def _build_lighting6_command(
+        self,
+        protocol: str,
+        device_id: str | None,
+        command: str,
+    ) -> bytes:
+        """Construit une commande Lighting6 (BLYSS).
+        
+        Format: [length] 0x15 [id(2)] [group] [unit] [cmd] [signal]
+        """
+        # Incrémenter le numéro de séquence
+        self._sequence_number = (self._sequence_number + 1) % 256
+        
+        # Convertir device_id en 2 bytes
+        device_bytes = self._hex_string_to_bytes(device_id or "0000", 2)
+        
+        # Group (généralement 0)
+        group = 0
+        
+        # Unit code (généralement 0)
+        unit_code = 0
+        
+        # Commande
+        cmd_byte = 0x01 if command == CMD_ON else 0x00
+        
+        # Construire le paquet: 08 15 [id(2)] [group] [unit] [cmd] 00
+        return bytes([
+            0x08,  # Longueur
+            PACKET_TYPE_LIGHTING6,  # 0x15
+            self._sequence_number,
+        ]) + device_bytes + bytes([
+            group,
+            unit_code,
+            cmd_byte,
             0x00,  # Signal level
         ])
 
@@ -393,66 +595,31 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         packet_type = packet[1]
         _LOGGER.debug("Type de paquet: 0x%02X", packet_type)
         
-        # Lighting1 / ARC
+        # Lighting1 (X10, ARC, ABICOD, etc.)
         if packet_type == PACKET_TYPE_LIGHTING1 and len(packet) >= 8:
-            subtype = packet[2]
-            _LOGGER.debug("Subtype: 0x%02X", subtype)
-            if subtype == SUBTYPE_ARC:
-                house_code_byte = packet[4]
-                unit_code = packet[5]
-                command = packet[6]
-                
-                _LOGGER.debug(
-                    "ARC paquet: house_code_byte=0x%02X, unit_code=%s, command=0x%02X",
-                    house_code_byte,
-                    unit_code,
-                    command,
-                )
-                
-                # Convertir house code byte en lettre
-                house_code = chr(house_code_byte) if 0x41 <= house_code_byte <= 0x50 else None
-                
-                if house_code:
-                    device_info = {
-                        CONF_PROTOCOL: PROTOCOL_ARC,
-                        CONF_HOUSE_CODE: house_code,
-                        CONF_UNIT_CODE: str(unit_code),
-                        "command": CMD_ON if command == 0x01 else CMD_OFF,
-                        "raw_packet": packet.hex(),
-                    }
-                    _LOGGER.debug("ARC appareil détecté: %s", device_info)
-                    return device_info
-                else:
-                    _LOGGER.debug("House code invalide: 0x%02X", house_code_byte)
+            return self._parse_lighting1_packet(packet)
         
-        # AC protocol (format: 0x0B 0x10 0x00 [8 bytes device] [1 byte command])
-        elif packet_type == 0x10 and len(packet) >= 12:
-            # Vérifier si c'est AC (pas ARC)
-            if len(packet) == 12:
-                device_id_bytes = packet[3:11]
-                device_id = device_id_bytes.hex()
-                command_byte = packet[11]
-                
-                _LOGGER.debug(
-                    "AC paquet: device_id=%s, command=0x%02X",
-                    device_id,
-                    command_byte,
-                )
-                
-                device_info = {
-                    CONF_PROTOCOL: PROTOCOL_AC,
-                    CONF_DEVICE_ID: device_id,
-                    "command": CMD_ON if command_byte == 0x01 else CMD_OFF,
-                    "raw_packet": packet.hex(),
-                }
-                _LOGGER.debug("AC appareil détecté: %s", device_info)
-                return device_info
-            else:
-                _LOGGER.debug("Paquet type 0x10 mais longueur incorrecte: %s (attendu 12)", len(packet))
+        # Lighting2 (AC, HomeEasy EU, etc.)
+        elif packet_type == PACKET_TYPE_LIGHTING2 and len(packet) >= 11:
+            return self._parse_lighting2_packet(packet)
         
-        # TEMP_HUM protocol (format: 0x0A 0x52 0x0D [seq] [id(2)] [temp(2)] [hum(1)] [status(1)] [signal(1)])
-        # Exemple: 0A520D35680300D4270289
-        # 0A=longueur, 52=TEMP_HUM, 0D=TH13, 35=seq, 6803=ID, 00D4=temp, 27=hum, 02=status, 89=signal/battery
+        # Lighting3 (Ikea Koppla)
+        elif packet_type == PACKET_TYPE_LIGHTING3 and len(packet) >= 8:
+            return self._parse_lighting3_packet(packet)
+        
+        # Lighting4 (PT2262)
+        elif packet_type == PACKET_TYPE_LIGHTING4 and len(packet) >= 7:
+            return self._parse_lighting4_packet(packet)
+        
+        # Lighting5 (LightwaveRF, etc.)
+        elif packet_type == PACKET_TYPE_LIGHTING5 and len(packet) >= 10:
+            return self._parse_lighting5_packet(packet)
+        
+        # Lighting6 (BLYSS)
+        elif packet_type == PACKET_TYPE_LIGHTING6 and len(packet) >= 8:
+            return self._parse_lighting6_packet(packet)
+        
+        # TEMP_HUM protocol
         elif packet_type == PACKET_TYPE_TEMP_HUM and len(packet) >= 11:
             subtype = packet[2]
             _LOGGER.debug("TEMP_HUM subtype: 0x%02X", subtype)
@@ -518,15 +685,184 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         
         return None
 
+    def _parse_lighting1_packet(self, packet: bytes) -> dict[str, Any] | None:
+        """Parse un paquet Lighting1 (X10, ARC, ABICOD, etc.)."""
+        subtype = packet[2]
+        house_code_byte = packet[4]
+        unit_code = packet[5]
+        command = packet[6]
+        
+        # Mapping subtype -> protocole
+        subtype_to_protocol = {
+            0x00: PROTOCOL_X10,
+            0x01: PROTOCOL_ARC,
+            0x02: PROTOCOL_ABICOD,
+            0x03: PROTOCOL_WAVEMAN,
+            0x04: PROTOCOL_EMW100,
+            0x05: PROTOCOL_IMPULS,
+            0x06: PROTOCOL_RISINGSUN,
+            0x07: PROTOCOL_PHILIPS,
+            0x08: PROTOCOL_ENERGENIE,
+            0x09: PROTOCOL_ENERGENIE_5,
+            0x0A: PROTOCOL_COCOSTICK,
+        }
+        
+        protocol = subtype_to_protocol.get(subtype)
+        if not protocol:
+            _LOGGER.debug("Lighting1 subtype non supporté: 0x%02X", subtype)
+            return None
+        
+        # Convertir house code byte en lettre (pour ARC et autres)
+        house_code = None
+        if 0x41 <= house_code_byte <= 0x50:
+            house_code = chr(house_code_byte)
+        else:
+            house_code = f"0x{house_code_byte:02X}"
+        
+        device_info = {
+            CONF_PROTOCOL: protocol,
+            CONF_HOUSE_CODE: house_code,
+            CONF_UNIT_CODE: str(unit_code),
+            "command": CMD_ON if command == 0x01 else CMD_OFF,
+            "raw_packet": packet.hex(),
+        }
+        _LOGGER.debug("%s appareil détecté: %s", protocol, device_info)
+        return device_info
+
+    def _parse_lighting2_packet(self, packet: bytes) -> dict[str, Any] | None:
+        """Parse un paquet Lighting2 (AC, HomeEasy EU, etc.)."""
+        subtype = packet[2]
+        device_id_bytes = packet[4:8]
+        device_id = device_id_bytes.hex()
+        unit_code = packet[8]
+        command = packet[9]
+        
+        # Mapping subtype -> protocole
+        subtype_to_protocol = {
+            0x00: PROTOCOL_AC,
+            0x01: PROTOCOL_HOMEEASY_EU,
+            0x02: PROTOCOL_ANSLUT,
+            0x03: PROTOCOL_KAMBROOK,
+        }
+        
+        protocol = subtype_to_protocol.get(subtype)
+        if not protocol:
+            _LOGGER.debug("Lighting2 subtype non supporté: 0x%02X", subtype)
+            return None
+        
+        device_info = {
+            CONF_PROTOCOL: protocol,
+            CONF_DEVICE_ID: device_id,
+            CONF_UNIT_CODE: str(unit_code),
+            "command": CMD_ON if command == 0x01 else CMD_OFF,
+            "raw_packet": packet.hex(),
+        }
+        _LOGGER.debug("%s appareil détecté: %s", protocol, device_info)
+        return device_info
+
+    def _parse_lighting3_packet(self, packet: bytes) -> dict[str, Any] | None:
+        """Parse un paquet Lighting3 (Ikea Koppla)."""
+        device_id_bytes = packet[3:5]
+        device_id = device_id_bytes.hex()
+        group = packet[5]
+        unit_code = packet[6]
+        command = packet[7]
+        
+        device_info = {
+            CONF_PROTOCOL: PROTOCOL_IKEA_KOPPLA,
+            CONF_DEVICE_ID: device_id,
+            CONF_UNIT_CODE: str(unit_code),
+            "group": str(group),
+            "command": CMD_ON if command == 0x01 else CMD_OFF,
+            "raw_packet": packet.hex(),
+        }
+        _LOGGER.debug("Ikea Koppla appareil détecté: %s", device_info)
+        return device_info
+
+    def _parse_lighting4_packet(self, packet: bytes) -> dict[str, Any] | None:
+        """Parse un paquet Lighting4 (PT2262)."""
+        device_id_bytes = packet[3:6]
+        device_id = device_id_bytes.hex()
+        command = packet[6]
+        
+        device_info = {
+            CONF_PROTOCOL: PROTOCOL_PT2262,
+            CONF_DEVICE_ID: device_id,
+            "command": CMD_ON if command == 0x01 else CMD_OFF,
+            "raw_packet": packet.hex(),
+        }
+        _LOGGER.debug("PT2262 appareil détecté: %s", device_info)
+        return device_info
+
+    def _parse_lighting5_packet(self, packet: bytes) -> dict[str, Any] | None:
+        """Parse un paquet Lighting5 (LightwaveRF, etc.)."""
+        subtype = packet[2]
+        device_id_bytes = packet[4:7]
+        device_id = device_id_bytes.hex()
+        unit_code = packet[7]
+        command = packet[8]
+        
+        # Mapping subtype -> protocole
+        subtype_to_protocol = {
+            0x00: PROTOCOL_LIGHTWAVERF,
+            0x01: PROTOCOL_EMW100_GDO,
+            0x02: PROTOCOL_BBSB,
+            0x03: PROTOCOL_RSL,
+            0x04: PROTOCOL_LIVOLO,
+            0x05: PROTOCOL_TRC02,
+            0x06: PROTOCOL_AOKE,
+            0x07: PROTOCOL_RGB_TRC02,
+        }
+        
+        protocol = subtype_to_protocol.get(subtype)
+        if not protocol:
+            _LOGGER.debug("Lighting5 subtype non supporté: 0x%02X", subtype)
+            return None
+        
+        device_info = {
+            CONF_PROTOCOL: protocol,
+            CONF_DEVICE_ID: device_id,
+            CONF_UNIT_CODE: str(unit_code),
+            "command": CMD_ON if command == 0x01 else CMD_OFF,
+            "raw_packet": packet.hex(),
+        }
+        _LOGGER.debug("%s appareil détecté: %s", protocol, device_info)
+        return device_info
+
+    def _parse_lighting6_packet(self, packet: bytes) -> dict[str, Any] | None:
+        """Parse un paquet Lighting6 (BLYSS)."""
+        device_id_bytes = packet[3:5]
+        device_id = device_id_bytes.hex()
+        group = packet[5]
+        unit_code = packet[6]
+        command = packet[7]
+        
+        device_info = {
+            CONF_PROTOCOL: PROTOCOL_BLYSS,
+            CONF_DEVICE_ID: device_id,
+            CONF_UNIT_CODE: str(unit_code),
+            "group": str(group),
+            "command": CMD_ON if command == 0x01 else CMD_OFF,
+            "raw_packet": packet.hex(),
+        }
+        _LOGGER.debug("BLYSS appareil détecté: %s", device_info)
+        return device_info
+
     async def _handle_discovered_device(self, device_info: dict[str, Any]) -> None:
         """Gère un appareil découvert."""
-        # Créer un identifiant unique
-        if device_info[CONF_PROTOCOL] == PROTOCOL_ARC:
-            device_id = f"{device_info[CONF_HOUSE_CODE]}_{device_info[CONF_UNIT_CODE]}"
-        elif device_info[CONF_PROTOCOL] == PROTOCOL_TEMP_HUM:
+        # Créer un identifiant unique selon le protocole
+        protocol = device_info[CONF_PROTOCOL]
+        if protocol in [PROTOCOL_ARC, PROTOCOL_X10, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
+                        PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,
+                        PROTOCOL_PHILIPS, PROTOCOL_ENERGENIE, PROTOCOL_ENERGENIE_5,
+                        PROTOCOL_COCOSTICK]:
+            # Protocoles avec house_code/unit_code
+            device_id = f"{device_info.get(CONF_HOUSE_CODE, '')}_{device_info.get(CONF_UNIT_CODE, '')}"
+        elif protocol == PROTOCOL_TEMP_HUM:
             device_id = device_info[CONF_DEVICE_ID]
         else:
-            device_id = device_info[CONF_DEVICE_ID]
+            # Protocoles avec device_id
+            device_id = device_info.get(CONF_DEVICE_ID, "")
         
         unique_id = f"{device_info[CONF_PROTOCOL]}_{device_id}"
         _LOGGER.debug("Identifiant unique généré: %s", unique_id)

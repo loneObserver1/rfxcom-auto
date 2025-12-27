@@ -55,9 +55,9 @@
         "data": {
           "name": "Nom de l'appareil",
           "protocol": "Protocole",
-          "device_id": "ID de l'appareil (pour AC)",
-          "house_code": "Code maison (pour ARC)",
-          "unit_code": "Code unité (pour ARC)"
+          "device_id": "ID de l'appareil (hex, pour Lighting2-6)",
+          "house_code": "Code maison (A-P ou hex, pour Lighting1)",
+          "unit_code": "Code unité (1-16, pour Lighting1 ou optionnel pour Lighting2-6)"
         }
       },
       "edit_device": {
@@ -78,7 +78,10 @@
     },
     "error": {
       "required_for_ac": "L'ID de l'appareil est requis pour le protocole AC",
-      "arc_requires_codes": "Le code maison et le code unité sont requis pour le protocole ARC"
+      "arc_requires_codes": "Le code maison et le code unité sont requis pour le protocole ARC",
+      "lighting1_requires_codes": "Le code maison et le code unité sont requis pour ce protocole",
+      "required_for_device_id": "L'ID de l'appareil est requis pour ce protocole",
+      "required_for_temp_hum": "L'ID de l'appareil est requis pour le protocole TEMP_HUM"
     }
   },
   "entity": {
@@ -93,7 +96,7 @@
       "fields": {
         "protocol": {
           "name": "Protocole",
-          "description": "Protocole de l'appareil (AC ou ARC)"
+          "description": "Protocole de l'appareil (X10, ARC, AC, LightwaveRF, etc.)"
         },
         "device_id": {
           "name": "ID de l'appareil",
