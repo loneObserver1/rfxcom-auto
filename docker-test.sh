@@ -24,7 +24,9 @@ mkdir -p ha_config
 # Créer un lien symbolique pour les custom_components si nécessaire
 if [ ! -L ha_config/custom_components/rfxcom ] && [ ! -d ha_config/custom_components/rfxcom ]; then
     mkdir -p ha_config/custom_components
-    ln -sfn "$(pwd)/custom_components/rfxcom" ha_config/custom_components/rfxcom
+    # Utiliser le chemin absolu pour le lien symbolique
+    ABS_PATH=$(cd "$(dirname "$0")" && pwd)
+    ln -sfn "$ABS_PATH/custom_components/rfxcom" ha_config/custom_components/rfxcom
     echo "✅ Lien symbolique créé pour custom_components/rfxcom"
 fi
 
