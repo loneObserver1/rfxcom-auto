@@ -20,7 +20,8 @@
         "data": {
           "port": "Port série (ex: /dev/ttyUSB0 ou COM3)",
           "baudrate": "Vitesse de transmission (baud)",
-          "auto_registry": "Détection automatique des appareils"
+          "auto_registry": "Détection automatique des appareils",
+          "enabled_protocols": "Protocoles activés (sélection multiple)"
         }
       },
       "network": {
@@ -29,7 +30,8 @@
         "data": {
           "host": "Adresse IP",
           "network_port": "Port",
-          "auto_registry": "Détection automatique des appareils"
+          "auto_registry": "Détection automatique des appareils",
+          "enabled_protocols": "Protocoles activés (sélection multiple)"
         }
       }
     },
@@ -82,7 +84,8 @@
       "arc_requires_codes": "Le code maison et le code unité sont requis pour le protocole ARC",
       "lighting1_requires_codes": "Le code maison et le code unité sont requis pour ce protocole",
       "required_for_device_id": "L'ID de l'appareil est requis pour ce protocole",
-      "required_for_temp_hum": "L'ID de l'appareil est requis pour le protocole TEMP_HUM"
+      "required_for_temp_hum": "L'ID de l'appareil est requis pour le protocole TEMP_HUM",
+      "auto_protocol_requires_auto_registry": "Le protocole 'auto' nécessite que l'auto-détection soit activée. Veuillez activer l'auto-détection dans les options."
     }
   },
   "entity": {

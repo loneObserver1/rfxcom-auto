@@ -107,6 +107,8 @@ CONF_UNIT_CODE = "unit_code"
 CONF_HOUSE_CODE = "house_code"
 CONF_DEVICE_ID = "device_id"
 CONF_PAIRING_MODE = "pairing_mode"
+CONF_ENABLED_PROTOCOLS = "enabled_protocols"
+PROTOCOL_AUTO = "auto"
 
 # RFXCOM Packet Types
 PACKET_TYPE_LIGHTING1 = 0x10

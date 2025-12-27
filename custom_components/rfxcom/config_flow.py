@@ -11,6 +11,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     DOMAIN,
@@ -57,6 +58,8 @@ from .const import (
     CONF_HOUSE_CODE,
     CONF_DEVICE_ID,
     CONF_AUTO_REGISTRY,
+    CONF_ENABLED_PROTOCOLS,
+    PROTOCOL_AUTO,
     DEFAULT_AUTO_REGISTRY,
 )
 
@@ -147,29 +150,45 @@ def _build_usb_schema() -> vol.Schema:
             vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
         ),
         vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
+        vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+            cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
+        ),
     }
 
     return vol.Schema(schema_dict)
 
-STEP_USER_DATA_SCHEMA_NETWORK = vol.Schema(
-    {
-        vol.Required(CONF_HOST, default=DEFAULT_HOST): str,
-        vol.Required(CONF_NETWORK_PORT, default=DEFAULT_NETWORK_PORT): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=65535)
-        ),
-        vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
-    }
-)
+def _build_network_schema() -> vol.Schema:
+    """Construit le schéma réseau avec sélection de protocoles."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_HOST, default=DEFAULT_HOST): str,
+            vol.Required(CONF_NETWORK_PORT, default=DEFAULT_NETWORK_PORT): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=65535)
+            ),
+            vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
+            vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+                cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
+            ),
+        }
+    )
 
-STEP_DEVICE_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_PROTOCOL): vol.In(PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
-        vol.Optional(CONF_DEVICE_ID): str,
-        vol.Optional(CONF_HOUSE_CODE): str,
-        vol.Optional(CONF_UNIT_CODE): str,
-        vol.Required("name"): str,
-    }
-)
+def _build_device_schema(enabled_protocols: list[str] | None = None) -> vol.Schema:
+    """Construit le schéma pour l'ajout d'appareil avec protocoles activés."""
+    if enabled_protocols is None:
+        enabled_protocols = PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]
+    
+    # Ajouter "auto" à la liste des protocoles disponibles
+    protocol_options = [PROTOCOL_AUTO] + enabled_protocols
+    
+    return vol.Schema(
+        {
+            vol.Required(CONF_PROTOCOL): vol.In(protocol_options),
+            vol.Optional(CONF_DEVICE_ID): str,
+            vol.Optional(CONF_HOUSE_CODE): str,
+            vol.Optional(CONF_UNIT_CODE): str,
+            vol.Required("name"): str,
+        }
+    )
 
 
 class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -262,8 +281,11 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not errors:
             user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_USB
             # Séparer data et options
-            data = {k: v for k, v in user_input.items() if k != CONF_AUTO_REGISTRY}
-            options = {CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)}
+            data = {k: v for k, v in user_input.items() if k not in [CONF_AUTO_REGISTRY, CONF_ENABLED_PROTOCOLS]}
+            options = {
+                CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY),
+                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
+            }
             return self.async_create_entry(
                 title=f"RFXCOM USB ({port})", data=data, options=options
             )
@@ -284,6 +306,9 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
                 ),
                 vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
+                vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+                    cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
+                ),
             })
             return self.async_show_form(
                 step_id="usb_manual", data_schema=schema
@@ -296,8 +321,11 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not errors:
             user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_USB
             # Séparer data et options
-            data = {k: v for k, v in user_input.items() if k != CONF_AUTO_REGISTRY}
-            options = {CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)}
+            data = {k: v for k, v in user_input.items() if k not in [CONF_AUTO_REGISTRY, CONF_ENABLED_PROTOCOLS]}
+            options = {
+                CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY),
+                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
+            }
             return self.async_create_entry(
                 title=f"RFXCOM USB ({user_input[CONF_PORT]})", data=data, options=options
             )
@@ -308,6 +336,9 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
             ),
             vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
+            vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+                cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
+            ),
         })
         return self.async_show_form(
             step_id="usb_manual", data_schema=schema, errors=errors
@@ -318,8 +349,9 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Configuration réseau."""
         if user_input is None:
+            schema = _build_network_schema()
             return self.async_show_form(
-                step_id="network", data_schema=STEP_USER_DATA_SCHEMA_NETWORK
+                step_id="network", data_schema=schema
             )
 
         errors = {}
@@ -329,17 +361,21 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not errors:
             user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_NETWORK
             # Séparer data et options
-            data = {k: v for k, v in user_input.items() if k != CONF_AUTO_REGISTRY}
-            options = {CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)}
+            data = {k: v for k, v in user_input.items() if k not in [CONF_AUTO_REGISTRY, CONF_ENABLED_PROTOCOLS]}
+            options = {
+                CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY),
+                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
+            }
             return self.async_create_entry(
                 title=f"RFXCOM Network ({user_input[CONF_HOST]}:{user_input[CONF_NETWORK_PORT]})",
                 data=data,
                 options=options,
             )
 
+        schema = _build_network_schema()
         return self.async_show_form(
             step_id="network",
-            data_schema=STEP_USER_DATA_SCHEMA_NETWORK,
+            data_schema=schema,
             errors=errors,
         )
 
@@ -447,15 +483,44 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Ajoute un nouvel appareil."""
+        # Récupérer les protocoles activés depuis les options
+        enabled_protocols = self.config_entry.options.get(
+            CONF_ENABLED_PROTOCOLS,
+            PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]
+        )
+        
         if user_input is None:
+            schema = _build_device_schema(enabled_protocols)
             return self.async_show_form(
-                step_id="add_device", data_schema=STEP_DEVICE_DATA_SCHEMA
+                step_id="add_device", data_schema=schema
             )
 
         errors = {}
 
         # Validation selon le protocole
         protocol = user_input[CONF_PROTOCOL]
+        
+        # Si "auto" est sélectionné, vérifier que l'auto-registry est activée
+        if protocol == PROTOCOL_AUTO:
+            auto_registry = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
+            if not auto_registry:
+                errors["base"] = "auto_protocol_requires_auto_registry"
+                schema = _build_device_schema(enabled_protocols)
+                return self.async_show_form(
+                    step_id="add_device", data_schema=schema, errors=errors
+                )
+            # Pour "auto", on crée un appareil avec protocol="auto"
+            # L'appareil sera configuré automatiquement lors de la première détection
+            device_config = {
+                "name": user_input["name"],
+                CONF_PROTOCOL: PROTOCOL_AUTO,
+                "auto_detect": True,
+            }
+            devices = self.config_entry.options.get("devices", [])
+            devices.append(device_config)
+            return self.async_create_entry(
+                title="", data={"devices": devices}
+            )
 
         # Protocoles Lighting1 (house_code + unit_code requis)
         lighting1_protocols = [
@@ -519,9 +584,10 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 title="", data={"devices": devices}
             )
 
+        schema = _build_device_schema(enabled_protocols)
         return self.async_show_form(
             step_id="add_device",
-            data_schema=STEP_DEVICE_DATA_SCHEMA,
+            data_schema=schema,
             errors=errors,
         )
 
@@ -535,11 +601,18 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
 
         device = devices[device_idx]
 
+        # Récupérer les protocoles activés depuis les options
+        enabled_protocols = self.config_entry.options.get(
+            CONF_ENABLED_PROTOCOLS,
+            PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]
+        )
+        
         if user_input is None:
             # Pré-remplir le formulaire avec les valeurs existantes
+            protocol_options = [PROTOCOL_AUTO] + enabled_protocols
             schema = vol.Schema({
                 vol.Required("name", default=device.get("name")): str,
-                vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In(PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
+                vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In(protocol_options),
                 vol.Optional(CONF_DEVICE_ID, default=device.get(CONF_DEVICE_ID, "")): str,
                 vol.Optional(CONF_HOUSE_CODE, default=device.get(CONF_HOUSE_CODE, "")): str,
                 vol.Optional(CONF_UNIT_CODE, default=device.get(CONF_UNIT_CODE, "")): str,
