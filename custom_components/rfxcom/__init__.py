@@ -9,11 +9,15 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_DEBUG, DEFAULT_DEBUG
 from .coordinator import RFXCOMCoordinator
+from .log_handler import setup_log_handler
 from .services import async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
+
+# Handler global pour capturer les logs
+_log_handler = None
 
 PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.SENSOR]
 
@@ -28,9 +32,31 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configure l'intégration RFXCOM."""
+    global _log_handler
+    
     _LOGGER.debug("Configuration de l'entrée RFXCOM: %s", entry.entry_id)
     _LOGGER.debug("Données de configuration: %s", entry.data)
     _LOGGER.debug("Options: %s", entry.options)
+
+    # Configurer le handler de logs si ce n'est pas déjà fait
+    if _log_handler is None:
+        _log_handler = setup_log_handler()
+        # Ajouter le handler à tous les loggers RFXCOM
+        for logger_name in [
+            "custom_components.rfxcom",
+            "custom_components.rfxcom.coordinator",
+            "custom_components.rfxcom.switch",
+            "custom_components.rfxcom.sensor",
+            "custom_components.rfxcom.services",
+            "custom_components.rfxcom.config_flow",
+        ]:
+            logger = logging.getLogger(logger_name)
+            logger.addHandler(_log_handler)
+            _LOGGER.debug("Handler de logs ajouté à %s", logger_name)
+
+    # Configurer le niveau de log selon l'option debug
+    debug_enabled = entry.options.get(CONF_DEBUG, DEFAULT_DEBUG)
+    _update_log_level(debug_enabled)
 
     coordinator = RFXCOMCoordinator(hass, entry)
 
@@ -75,4 +101,26 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("Intégration RFXCOM déchargée: %s", unload_ok)
     return unload_ok
+
+
+def _update_log_level(debug_enabled: bool) -> None:
+    """Met à jour le niveau de log selon l'option debug."""
+    level = logging.DEBUG if debug_enabled else logging.INFO
+    for logger_name in [
+        "custom_components.rfxcom",
+        "custom_components.rfxcom.coordinator",
+        "custom_components.rfxcom.switch",
+        "custom_components.rfxcom.sensor",
+        "custom_components.rfxcom.services",
+        "custom_components.rfxcom.config_flow",
+    ]:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(level)
+        _LOGGER.debug("Niveau de log mis à jour pour %s: %s", logger_name, level)
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Met à jour les options de l'intégration."""
+    debug_enabled = entry.options.get(CONF_DEBUG, DEFAULT_DEBUG)
+    _update_log_level(debug_enabled)
 

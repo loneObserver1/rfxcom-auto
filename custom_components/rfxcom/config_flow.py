@@ -59,8 +59,10 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_AUTO_REGISTRY,
     CONF_ENABLED_PROTOCOLS,
+    CONF_DEBUG,
     PROTOCOL_AUTO,
     DEFAULT_AUTO_REGISTRY,
+    DEFAULT_DEBUG,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -404,6 +406,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         """Affiche la liste des appareils et les options."""
         devices = self.config_entry.options.get("devices", [])
         auto_registry = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
+        debug_enabled = self.config_entry.options.get(CONF_DEBUG, DEFAULT_DEBUG)
 
         if user_input is None:
             # Créer les options pour le menu
@@ -416,6 +419,14 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             # Ajouter l'option auto-registry
             options.append("auto_registry")
             option_labels["auto_registry"] = f"🔍 Auto-détection: {'Activée' if auto_registry else 'Désactivée'}"
+            
+            # Ajouter l'option debug
+            options.append("debug")
+            option_labels["debug"] = f"🐛 Mode debug: {'Activé' if debug_enabled else 'Désactivé'}"
+            
+            # Ajouter l'option logs
+            options.append("view_logs")
+            option_labels["view_logs"] = "📋 Voir les logs"
 
             # Ajouter les appareils existants
             for idx, device in enumerate(devices):
@@ -442,6 +453,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                     "devices_count": str(len(devices)),
                     "devices_list": devices_list,
                     "auto_registry_status": "Activée" if auto_registry else "Désactivée",
+                    "debug_status": "Activé" if debug_enabled else "Désactivé",
                 },
             )
 
@@ -450,6 +462,10 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_add_device()
         elif action == "auto_registry":
             return await self.async_step_auto_registry()
+        elif action == "debug":
+            return await self.async_step_debug()
+        elif action == "view_logs":
+            return await self.async_step_view_logs()
         elif action.startswith("edit_"):
             idx = int(action.split("_")[1])
             return await self.async_step_edit_device(idx)
@@ -478,6 +494,87 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         options[CONF_AUTO_REGISTRY] = user_input[CONF_AUTO_REGISTRY]
 
         return self.async_create_entry(title="", data=options)
+
+    async def async_step_debug(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure le mode debug."""
+        current_value = self.config_entry.options.get(CONF_DEBUG, DEFAULT_DEBUG)
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="debug",
+                data_schema=vol.Schema({
+                    vol.Required(CONF_DEBUG, default=current_value): bool,
+                }),
+            )
+
+        # Mettre à jour l'option
+        options = dict(self.config_entry.options)
+        options[CONF_DEBUG] = user_input[CONF_DEBUG]
+        
+        # Mettre à jour le niveau de log immédiatement
+        # Import dynamique pour éviter les imports circulaires
+        import sys
+        import logging
+        if "custom_components.rfxcom" in sys.modules:
+            rfxcom_module = sys.modules["custom_components.rfxcom"]
+            if hasattr(rfxcom_module, "_update_log_level"):
+                rfxcom_module._update_log_level(user_input[CONF_DEBUG])
+            else:
+                # Fallback: mettre à jour directement
+                level = logging.DEBUG if user_input[CONF_DEBUG] else logging.INFO
+                for logger_name in [
+                    "custom_components.rfxcom",
+                    "custom_components.rfxcom.coordinator",
+                    "custom_components.rfxcom.switch",
+                    "custom_components.rfxcom.sensor",
+                    "custom_components.rfxcom.services",
+                    "custom_components.rfxcom.config_flow",
+                ]:
+                    logger = logging.getLogger(logger_name)
+                    logger.setLevel(level)
+
+        return self.async_create_entry(title="", data=options)
+
+    async def async_step_view_logs(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Affiche les logs RFXCOM."""
+        from .log_handler import get_logs, clear_logs
+        
+        if user_input is None:
+            # Récupérer les logs
+            logs = get_logs(limit=500)
+            
+            # Formater les logs pour l'affichage
+            if logs:
+                logs_text = "\n".join([
+                    f"[{log['timestamp']}] [{log['level']}] {log['message']}"
+                    for log in logs
+                ])
+            else:
+                logs_text = "Aucun log disponible."
+            
+            schema = vol.Schema({
+                vol.Optional("clear_logs", default=False): bool,
+            })
+            
+            return self.async_show_form(
+                step_id="view_logs",
+                data_schema=schema,
+                description_placeholders={
+                    "logs": logs_text,
+                    "logs_count": str(len(logs)),
+                },
+            )
+        
+        # Si l'utilisateur veut effacer les logs
+        if user_input.get("clear_logs"):
+            clear_logs()
+            return await self.async_step_view_logs()
+        
+        return await self.async_step_init()
 
     async def async_step_add_device(
         self, user_input: dict[str, Any] | None = None

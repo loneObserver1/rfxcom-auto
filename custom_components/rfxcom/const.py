@@ -191,6 +191,10 @@ PROTOCOL_TO_PACKET = {
 CONF_AUTO_REGISTRY = "auto_registry"
 DEFAULT_AUTO_REGISTRY = False
 
+# Debug
+CONF_DEBUG = "debug"
+DEFAULT_DEBUG = False
+
 # Timeouts
 PAIRING_TIMEOUT = 30  # secondes
 

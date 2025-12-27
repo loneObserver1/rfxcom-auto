@@ -50,7 +50,7 @@
     "step": {
       "init": {
         "title": "Options RFXCOM",
-        "description": "Gérez vos appareils RFXCOM et les paramètres\n\n**Appareils configurés ({devices_count}):**\n{devices_list}\n\n**Auto-détection:** {auto_registry_status}\n\nSélectionnez une action ci-dessous :"
+        "description": "Gérez vos appareils RFXCOM et les paramètres\n\n**Appareils configurés ({devices_count}):**\n{devices_list}\n\n**Auto-détection:** {auto_registry_status}\n**Mode debug:** {debug_status}\n\nSélectionnez une action ci-dessous :"
       },
       "add_device": {
         "title": "Ajouter un appareil",
@@ -76,6 +76,20 @@
         "description": "Activez ou désactivez la détection automatique des nouveaux appareils",
         "data": {
           "auto_registry": "Détection automatique des appareils"
+        }
+      },
+      "debug": {
+        "title": "Mode debug",
+        "description": "Activez ou désactivez le mode debug pour afficher les logs détaillés",
+        "data": {
+          "debug": "Mode debug"
+        }
+      },
+      "view_logs": {
+        "title": "Logs RFXCOM",
+        "description": "Logs récents de l'intégration RFXCOM ({logs_count} entrées)\n\n```\n{logs}\n```\n\nSélectionnez une action :",
+        "data": {
+          "action": "Action"
         }
       }
     },
