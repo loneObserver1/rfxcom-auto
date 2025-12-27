@@ -149,7 +149,7 @@ python validate.py
 
 ## Support
 
-Pour signaler un problème ou proposer une amélioration, veuillez ouvrir une issue sur GitHub.
+Pour signaler un problème ou proposer une amélioration, veuillez ouvrir une issue sur [GitHub](https://github.com/loneObserver1/rfxcom-auto/issues).
 
 ## Licence
 
