@@ -9,7 +9,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers.restore_state import async_get_last_state
 
 from .const import (
     DOMAIN,
@@ -89,9 +88,8 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
         """Appelé lorsque l'entité est ajoutée à Home Assistant."""
         await super().async_added_to_hass()
         
-        # Restaurer l'état précédent
-        if (last_state := await async_get_last_state(self.hass, self.entity_id)) is not None:
-            self._is_on = last_state.state == "on"
+        # Note: La restauration de l'état n'est pas implémentée car les switches RFXCOM
+        # ne peuvent pas lire leur état réel. L'état est toujours initialisé à False.
 
     @property
     def is_on(self) -> bool:
