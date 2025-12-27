@@ -1,0 +1,7 @@
+{
+  "name": "RFXCOM",
+  "render_readme": true,
+  "domains": ["rfxcom"],
+  "iot_class": "Local Push"
+}
+

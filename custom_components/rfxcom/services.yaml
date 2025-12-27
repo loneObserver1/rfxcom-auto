@@ -1,0 +1,38 @@
+pair_device:
+  name: Appairer un appareil
+  description: Appaire un nouvel appareil RFXCOM
+  fields:
+    protocol:
+      name: Protocole
+      description: Protocole de l'appareil (AC ou ARC)
+      required: true
+      selector:
+        select:
+          options:
+            - AC
+            - ARC
+    device_id:
+      name: ID de l'appareil
+      description: ID de l'appareil (pour protocole AC)
+      required: false
+      selector:
+        text:
+    house_code:
+      name: Code maison
+      description: Code maison (pour protocole ARC)
+      required: false
+      selector:
+        text:
+    unit_code:
+      name: Code unité
+      description: Code unité (pour protocole ARC)
+      required: false
+      selector:
+        text:
+    name:
+      name: Nom
+      description: Nom de l'appareil dans Home Assistant
+      required: true
+      selector:
+        text:
+

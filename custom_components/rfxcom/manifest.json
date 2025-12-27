@@ -1,0 +1,14 @@
+{
+  "domain": "rfxcom",
+  "name": "RFXCOM",
+  "codeowners": ["@thibault-boulay"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/thibault-boulay/rfxcom-auto",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/thibault-boulay/rfxcom-auto/issues",
+  "requirements": ["pyserial>=3.5"],
+  "version": "1.0.0"
+}
+

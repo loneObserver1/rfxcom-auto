@@ -1,0 +1,350 @@
+"""Flux de configuration pour RFXCOM."""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import voluptuous as vol
+
+from homeassistant import config_entries
+from homeassistant.const import CONF_PORT
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResult
+from homeassistant.exceptions import HomeAssistantError
+
+from .const import (
+    DOMAIN,
+    DEFAULT_PORT,
+    DEFAULT_BAUDRATE,
+    DEFAULT_HOST,
+    DEFAULT_NETWORK_PORT,
+    CONNECTION_TYPE_USB,
+    CONNECTION_TYPE_NETWORK,
+    PROTOCOL_AC,
+    PROTOCOL_ARC,
+    CONF_BAUDRATE,
+    CONF_CONNECTION_TYPE,
+    CONF_HOST,
+    CONF_NETWORK_PORT,
+    CONF_PROTOCOL,
+    CONF_UNIT_CODE,
+    CONF_HOUSE_CODE,
+    CONF_DEVICE_ID,
+    CONF_PAIRING_MODE,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+STEP_CONNECTION_TYPE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_USB): vol.In(
+            [CONNECTION_TYPE_USB, CONNECTION_TYPE_NETWORK]
+        ),
+    }
+)
+
+STEP_USER_DATA_SCHEMA_USB = vol.Schema(
+    {
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): str,
+        vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.All(
+            vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
+        ),
+    }
+)
+
+STEP_USER_DATA_SCHEMA_NETWORK = vol.Schema(
+    {
+        vol.Required(CONF_HOST, default=DEFAULT_HOST): str,
+        vol.Required(CONF_NETWORK_PORT, default=DEFAULT_NETWORK_PORT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=65535)
+        ),
+    }
+)
+
+STEP_DEVICE_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_PROTOCOL): vol.In([PROTOCOL_AC, PROTOCOL_ARC]),
+        vol.Optional(CONF_DEVICE_ID): str,
+        vol.Optional(CONF_HOUSE_CODE): str,
+        vol.Optional(CONF_UNIT_CODE): str,
+        vol.Required("name"): str,
+    }
+)
+
+
+class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Gère le flux de configuration RFXCOM."""
+
+    VERSION = 1
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Étape initiale de configuration."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="user", data_schema=STEP_CONNECTION_TYPE_SCHEMA
+            )
+
+        connection_type = user_input.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_USB)
+        
+        if connection_type == CONNECTION_TYPE_USB:
+            return await self.async_step_usb()
+        else:
+            return await self.async_step_network()
+
+    async def async_step_usb(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configuration USB."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="usb", data_schema=STEP_USER_DATA_SCHEMA_USB
+            )
+
+        errors = {}
+        if not user_input.get(CONF_PORT):
+            errors["base"] = "port_required"
+
+        if not errors:
+            user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_USB
+            return self.async_create_entry(
+                title=f"RFXCOM USB ({user_input[CONF_PORT]})", data=user_input
+            )
+
+        return self.async_show_form(
+            step_id="usb", data_schema=STEP_USER_DATA_SCHEMA_USB, errors=errors
+        )
+
+    async def async_step_network(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configuration réseau."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="network", data_schema=STEP_USER_DATA_SCHEMA_NETWORK
+            )
+
+        errors = {}
+        if not user_input.get(CONF_HOST):
+            errors["base"] = "host_required"
+
+        if not errors:
+            user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_NETWORK
+            return self.async_create_entry(
+                title=f"RFXCOM Network ({user_input[CONF_HOST]}:{user_input[CONF_NETWORK_PORT]})",
+                data=user_input,
+            )
+
+        return self.async_show_form(
+            step_id="network",
+            data_schema=STEP_USER_DATA_SCHEMA_NETWORK,
+            errors=errors,
+        )
+
+    async def async_step_import(self, import_info: dict[str, Any]) -> FlowResult:
+        """Importe une configuration depuis configuration.yaml."""
+        return await self.async_step_user(import_info)
+
+    @staticmethod
+    async def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Retourne le gestionnaire de flux d'options."""
+        return RFXCOMOptionsFlowHandler(config_entry)
+
+
+class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
+    """Gère le flux d'options pour RFXCOM."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialise le gestionnaire d'options."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Affiche la liste des appareils."""
+        devices = self.config_entry.options.get("devices", [])
+        
+        if user_input is None:
+            # Créer les options pour le sélecteur
+            options = ["add"]
+            option_labels = {"add": "➕ Ajouter un appareil"}
+            
+            for idx, device in enumerate(devices):
+                device_name = device.get("name", f"Appareil {idx+1}")
+                options.append(f"edit_{idx}")
+                options.append(f"delete_{idx}")
+                option_labels[f"edit_{idx}"] = f"✏️ Modifier: {device_name}"
+                option_labels[f"delete_{idx}"] = f"🗑️ Supprimer: {device_name}"
+            
+            schema = vol.Schema({
+                vol.Required("action"): vol.In(options),
+            })
+            
+            return self.async_show_form(
+                step_id="init",
+                data_schema=schema,
+                description_placeholders={
+                    "devices_count": str(len(devices)),
+                    "devices_list": "\n".join([
+                        f"- {d.get('name', 'Sans nom')} ({d.get('protocol', 'N/A')})"
+                        for d in devices
+                    ]) if devices else "Aucun appareil configuré",
+                },
+            )
+        
+        action = user_input.get("action")
+        if action == "add":
+            return await self.async_step_add_device()
+        elif action.startswith("edit_"):
+            idx = int(action.split("_")[1])
+            return await self.async_step_edit_device(idx)
+        elif action.startswith("delete_"):
+            idx = int(action.split("_")[1])
+            return await self.async_step_delete_device(idx)
+        
+        return await self.async_step_init()
+
+    async def async_step_add_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Ajoute un nouvel appareil."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="add_device", data_schema=STEP_DEVICE_DATA_SCHEMA
+            )
+
+        errors = {}
+
+        # Validation
+        protocol = user_input[CONF_PROTOCOL]
+        if protocol == PROTOCOL_AC and not user_input.get(CONF_DEVICE_ID):
+            errors[CONF_DEVICE_ID] = "required_for_ac"
+        elif protocol == PROTOCOL_ARC and (
+            not user_input.get(CONF_HOUSE_CODE) or not user_input.get(CONF_UNIT_CODE)
+        ):
+            errors["base"] = "arc_requires_codes"
+
+        if not errors:
+            # Récupérer les appareils existants
+            devices = self.config_entry.options.get("devices", [])
+
+            # Créer la configuration du nouvel appareil
+            device_config = {
+                "name": user_input["name"],
+                CONF_PROTOCOL: protocol,
+            }
+
+            if protocol == PROTOCOL_AC:
+                device_config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
+            elif protocol == PROTOCOL_ARC:
+                device_config[CONF_HOUSE_CODE] = user_input[CONF_HOUSE_CODE]
+                device_config[CONF_UNIT_CODE] = user_input[CONF_UNIT_CODE]
+
+            # Ajouter le nouvel appareil
+            devices.append(device_config)
+
+            # Mettre à jour les options
+            return self.async_create_entry(
+                title="", data={"devices": devices}
+            )
+
+        return self.async_show_form(
+            step_id="add_device",
+            data_schema=STEP_DEVICE_DATA_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_edit_device(
+        self, device_idx: int, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Modifie un appareil existant."""
+        devices = self.config_entry.options.get("devices", [])
+        if device_idx >= len(devices):
+            return await self.async_step_init()
+        
+        device = devices[device_idx]
+        
+        if user_input is None:
+            # Pré-remplir le formulaire avec les valeurs existantes
+            schema = vol.Schema({
+                vol.Required("name", default=device.get("name")): str,
+                vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In([PROTOCOL_AC, PROTOCOL_ARC]),
+                vol.Optional(CONF_DEVICE_ID, default=device.get(CONF_DEVICE_ID, "")): str,
+                vol.Optional(CONF_HOUSE_CODE, default=device.get(CONF_HOUSE_CODE, "")): str,
+                vol.Optional(CONF_UNIT_CODE, default=device.get(CONF_UNIT_CODE, "")): str,
+            })
+            return self.async_show_form(
+                step_id="edit_device", data_schema=schema
+            )
+
+        # Mettre à jour l'appareil
+        protocol = user_input[CONF_PROTOCOL]
+        device["name"] = user_input["name"]
+        device[CONF_PROTOCOL] = protocol
+        
+        if protocol == PROTOCOL_AC:
+            device[CONF_DEVICE_ID] = user_input.get(CONF_DEVICE_ID, "")
+            device.pop(CONF_HOUSE_CODE, None)
+            device.pop(CONF_UNIT_CODE, None)
+        elif protocol == PROTOCOL_ARC:
+            device[CONF_HOUSE_CODE] = user_input.get(CONF_HOUSE_CODE, "")
+            device[CONF_UNIT_CODE] = user_input.get(CONF_UNIT_CODE, "")
+            device.pop(CONF_DEVICE_ID, None)
+
+        devices[device_idx] = device
+        
+        return self.async_create_entry(
+            title="", data={"devices": devices}
+        )
+
+    async def async_step_delete_device(
+        self, device_idx: int, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Supprime un appareil."""
+        devices = self.config_entry.options.get("devices", [])
+        if device_idx >= len(devices):
+            return await self.async_step_init()
+        
+        device_name = devices[device_idx].get("name", f"Appareil {device_idx+1}")
+        
+        if user_input is None:
+            return self.async_show_form(
+                step_id="delete_device",
+                data_schema=vol.Schema({
+                    vol.Required("confirm", default=False): bool,
+                }),
+                description_placeholders={"device_name": device_name},
+            )
+        
+        if user_input.get("confirm"):
+            devices.pop(device_idx)
+            return self.async_create_entry(
+                title="", data={"devices": devices}
+            )
+        
+        return await self.async_step_init()
+
+
+async def async_show_pairing_form(
+    hass: HomeAssistant,
+    protocol: str,
+    device_id: str | None = None,
+    house_code: str | None = None,
+    unit_code: str | None = None,
+) -> dict[str, Any]:
+    """Affiche le formulaire d'appairage."""
+    schema = {
+        vol.Required("name"): str,
+    }
+
+    if protocol == PROTOCOL_AC:
+        schema[vol.Required(CONF_DEVICE_ID, default=device_id or "")] = str
+    elif protocol == PROTOCOL_ARC:
+        schema[vol.Required(CONF_HOUSE_CODE, default=house_code or "")] = str
+        schema[vol.Required(CONF_UNIT_CODE, default=unit_code or "")] = str
+
+    return schema
+

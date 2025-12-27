@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuration RFXCOM",
+        "description": "Configurez votre interface RFXCOM",
+        "data": {
+          "port": "Port série",
+          "baudrate": "Vitesse de transmission"
+        }
+      }
+    },
+    "error": {
+      "port_required": "Le port série est requis",
+      "cannot_connect": "Impossible de se connecter au port série",
+      "unknown": "Une erreur inattendue s'est produite"
+    },
+    "abort": {
+      "already_configured": "L'appareil est déjà configuré"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options RFXCOM",
+        "description": "Configurez vos appareils RFXCOM"
+      }
+    }
+  }
+}
+
