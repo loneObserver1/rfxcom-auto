@@ -2,17 +2,42 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+import voluptuous as vol
+
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
-import voluptuous as vol
 
 from .const import (
     DOMAIN,
     PROTOCOLS_SWITCH,
     PROTOCOL_TEMP_HUM,
+    PROTOCOL_X10,
+    PROTOCOL_ARC,
+    PROTOCOL_ABICOD,
+    PROTOCOL_WAVEMAN,
+    PROTOCOL_EMW100,
+    PROTOCOL_IMPULS,
+    PROTOCOL_RISINGSUN,
+    PROTOCOL_PHILIPS,
+    PROTOCOL_ENERGENIE,
+    PROTOCOL_ENERGENIE_5,
+    PROTOCOL_COCOSTICK,
+    PROTOCOL_AC,
+    PROTOCOL_HOMEEASY_EU,
+    PROTOCOL_ANSLUT,
+    PROTOCOL_KAMBROOK,
+    PROTOCOL_IKEA_KOPPLA,
+    PROTOCOL_PT2262,
+    PROTOCOL_LIGHTWAVERF,
+    PROTOCOL_EMW100_GDO,
+    PROTOCOL_BBSB,
+    PROTOCOL_RSL,
+    PROTOCOL_LIVOLO,
+    PROTOCOL_TRC02,
+    PROTOCOL_AOKE,
+    PROTOCOL_RGB_TRC02,
+    PROTOCOL_BLYSS,
     CONF_PROTOCOL,
     CONF_DEVICE_ID,
     CONF_HOUSE_CODE,
@@ -56,17 +81,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
 
         # Validation selon le protocole
-        from .const import (
-            PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
-            PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,
-            PROTOCOL_PHILIPS, PROTOCOL_ENERGENIE, PROTOCOL_ENERGENIE_5,
-            PROTOCOL_COCOSTICK, PROTOCOL_AC, PROTOCOL_HOMEEASY_EU,
-            PROTOCOL_ANSLUT, PROTOCOL_KAMBROOK, PROTOCOL_IKEA_KOPPLA,
-            PROTOCOL_PT2262, PROTOCOL_LIGHTWAVERF, PROTOCOL_EMW100_GDO,
-            PROTOCOL_BBSB, PROTOCOL_RSL, PROTOCOL_LIVOLO, PROTOCOL_TRC02,
-            PROTOCOL_AOKE, PROTOCOL_RGB_TRC02, PROTOCOL_BLYSS
-        )
-
         lighting1_protocols = [
             PROTOCOL_X10, PROTOCOL_ARC, PROTOCOL_ABICOD, PROTOCOL_WAVEMAN,
             PROTOCOL_EMW100, PROTOCOL_IMPULS, PROTOCOL_RISINGSUN,

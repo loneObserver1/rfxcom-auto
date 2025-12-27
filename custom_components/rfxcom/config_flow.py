@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import logging
-import serial.tools.list_ports
 from typing import Any
 
+import serial.tools.list_ports
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     DOMAIN,
@@ -57,7 +56,6 @@ from .const import (
     CONF_UNIT_CODE,
     CONF_HOUSE_CODE,
     CONF_DEVICE_ID,
-    CONF_PAIRING_MODE,
     CONF_AUTO_REGISTRY,
     DEFAULT_AUTO_REGISTRY,
 )

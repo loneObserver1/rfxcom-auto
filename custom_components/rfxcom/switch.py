@@ -12,8 +12,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
-    PROTOCOL_AC,
-    PROTOCOL_ARC,
     CMD_ON,
     CMD_OFF,
     CONF_PROTOCOL,

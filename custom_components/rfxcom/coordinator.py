@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import serial
 import socket
 from typing import Any
+
+import serial
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -45,7 +46,6 @@ from .const import (
     PROTOCOL_AOKE,
     PROTOCOL_RGB_TRC02,
     PROTOCOL_BLYSS,
-    PROTOCOLS_SWITCH,
     PROTOCOL_TO_PACKET,
     CMD_ON,
     CMD_OFF,
@@ -56,7 +56,6 @@ from .const import (
     PACKET_TYPE_LIGHTING5,
     PACKET_TYPE_LIGHTING6,
     PACKET_TYPE_TEMP_HUM,
-    SUBTYPE_ARC,
     SUBTYPE_TH13,
     CONF_AUTO_REGISTRY,
     DEFAULT_AUTO_REGISTRY,
