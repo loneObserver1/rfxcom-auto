@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  homeassistant:
+    container_name: homeassistant-test
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    volumes:
+      # Configuration Home Assistant
+      - ./ha_config:/config
+      # Custom components (lien symbolique vers notre intégration)
+      - ./custom_components:/config/custom_components
+      # Pour accéder aux ports série (si nécessaire)
+      - /dev:/dev
+    ports:
+      - "8123:8123"
+    restart: unless-stopped
+    privileged: true
+    environment:
+      - TZ=Europe/Paris
+    network_mode: host
+
