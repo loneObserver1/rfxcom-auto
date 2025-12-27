@@ -205,7 +205,13 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Vérifier qu'il n'existe qu'une seule configuration
         existing_entries = self._async_current_entries()
         if existing_entries:
-            return self.async_abort(reason="single_instance_allowed")
+            # Si une configuration existe déjà, rediriger vers les options pour ajouter un appareil
+            # Cela permet d'ajouter des appareils depuis le menu "Ajouter un appareil"
+            existing_entry = existing_entries[0]
+            # Créer un handler d'options et rediriger vers l'ajout d'appareil
+            options_handler = RFXCOMOptionsFlowHandler(existing_entry)
+            options_handler.hass = self.hass
+            return await options_handler.async_step_add_device()
         
         if user_input is None:
             # Détecter automatiquement les ports USB disponibles
