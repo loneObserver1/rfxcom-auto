@@ -111,17 +111,28 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Port série configuré: timeout=1s, write_timeout=1s")
             elif self.connection_type == CONNECTION_TYPE_NETWORK:
                 _LOGGER.debug("Configuration connexion réseau: host=%s, port=%s", self.host, self.network_port)
+                # Fermer l'ancien socket s'il existe
+                if self.socket is not None:
+                    try:
+                        self.socket.close()
+                    except Exception:
+                        pass
                 self.socket = await self.hass.async_add_executor_job(
                     socket.socket,
                     socket.AF_INET,
                     socket.SOCK_STREAM,
                 )
+                # Configurer le socket pour qu'il ne reste pas bloqué
+                self.socket.settimeout(5.0)
+                # Désactiver l'algorithme de Nagle pour envoyer immédiatement (TCP_NODELAY)
+                # Cela garantit que les petits paquets sont envoyés sans délai
+                self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 await self.hass.async_add_executor_job(
                     self.socket.connect,
                     (self.host, self.network_port),
                 )
                 _LOGGER.info(
-                    "Connexion RFXCOM réseau établie sur %s:%s",
+                    "✅ Connexion RFXCOM réseau établie sur %s:%s",
                     self.host,
                     self.network_port,
                 )
@@ -236,7 +247,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     _LOGGER.error("Échec de la construction de la commande pour %s", protocol)
                     return False
 
-                _LOGGER.debug("Commande construite: %s bytes, hex=%s", len(cmd_bytes), cmd_bytes.hex())
+                _LOGGER.info("📤 Commande construite: %s bytes, hex=%s", len(cmd_bytes), cmd_bytes.hex())
 
                 # Envoi de la commande
                 if self.connection_type == CONNECTION_TYPE_USB:
@@ -246,17 +257,69 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     await self.hass.async_add_executor_job(
                         self.serial_port.flush
                     )
+                    _LOGGER.info("📤 Commande envoyée via USB: %s bytes", len(cmd_bytes))
                 elif self.connection_type == CONNECTION_TYPE_NETWORK:
-                    await self.hass.async_add_executor_job(
-                        self.socket.sendall, cmd_bytes
-                    )
+                    try:
+                        # Vérifier que le socket est toujours connecté
+                        if self.socket is None:
+                            _LOGGER.warning("⚠️ Socket non initialisé, reconnexion...")
+                            await self.async_setup()
+                        
+                        # Vérifier la connexion avant d'envoyer
+                        try:
+                            # Test de connexion (peek)
+                            self.socket.getpeername()
+                        except (OSError, AttributeError) as conn_err:
+                            _LOGGER.warning("⚠️ Socket déconnecté (%s), reconnexion...", conn_err)
+                            # Fermer l'ancien socket
+                            try:
+                                self.socket.close()
+                            except Exception:
+                                pass
+                            self.socket = None
+                            await self.async_setup()
+                        
+                        # Envoyer la commande
+                        # Utiliser sendall() pour envoyer tous les bytes
+                        await self.hass.async_add_executor_job(
+                            self.socket.sendall, cmd_bytes
+                        )
+                        # Petit délai pour s'assurer que les données sont transmises via le tunnel
+                        await asyncio.sleep(0.1)  # 100ms de délai pour la transmission
+                        
+                        _LOGGER.info(
+                            "📤 Commande envoyée via réseau: protocole=%s, device=%s, commande=%s, bytes=%s",
+                            protocol,
+                            device_id or f"{house_code}/{unit_code}",
+                            command,
+                            cmd_bytes.hex(),
+                        )
+                    except Exception as send_err:
+                        _LOGGER.error("❌ Erreur lors de l'envoi réseau: %s", send_err)
+                        # Tentative de reconnexion
+                        try:
+                            _LOGGER.info("🔄 Tentative de reconnexion...")
+                            if self.socket:
+                                try:
+                                    self.socket.close()
+                                except Exception:
+                                    pass
+                            self.socket = None
+                            await self.async_setup()
+                            # Réessayer l'envoi après reconnexion
+                            await self.hass.async_add_executor_job(
+                                self.socket.sendall, cmd_bytes
+                            )
+                            _LOGGER.info("✅ Commande envoyée après reconnexion")
+                        except Exception as reconnect_err:
+                            _LOGGER.error("❌ Échec de la reconnexion: %s", reconnect_err)
+                            return False
 
-                _LOGGER.debug(
-                    "Commande envoyée: protocole=%s, device=%s, commande=%s, bytes=%s",
+                _LOGGER.info(
+                    "✅ Commande envoyée avec succès: protocole=%s, device=%s, commande=%s",
                     protocol,
                     device_id or f"{house_code}/{unit_code}",
                     command,
-                    cmd_bytes.hex(),
                 )
                 return True
 

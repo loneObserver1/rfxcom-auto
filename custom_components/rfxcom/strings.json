@@ -54,13 +54,55 @@
       },
       "add_device": {
         "title": "Ajouter un appareil",
-        "description": "Ajoutez un nouvel appareil RFXCOM. Sélectionnez 'auto' pour la détection automatique du protocole.",
+        "description": "{instructions}",
         "data": {
+          "pairing_mode": "Mode d'ajout",
           "name": "Nom de l'appareil",
           "protocol": "Protocole (ou 'auto' pour détection automatique)",
           "device_id": "ID de l'appareil (pour AC et autres)",
           "house_code": "Code maison (pour ARC et Lighting1)",
           "unit_code": "Code unité (pour ARC et Lighting1)"
+        }
+      },
+      "pair_device": {
+        "title": "Appairage automatique",
+        "description": "{instructions}",
+        "data": {
+          "name": "Nom de l'appareil",
+          "protocol": "Protocole"
+        }
+      },
+      "pair_device_codes": {
+        "title": "Appairage automatique - Codes",
+        "description": "{instructions}",
+        "data": {
+          "house_code": "Code maison (A-P)",
+          "unit_code": "Code unité (1-16)"
+        }
+      },
+      "pair_device_id": {
+        "title": "Appairage automatique - ID",
+        "description": "{instructions}",
+        "data": {
+          "device_id": "ID de l'appareil (hexadécimal)"
+        }
+      },
+      "pair_device_ready": {
+        "title": "Appairage automatique - Prêt",
+        "description": "{instructions}",
+        "data": {
+          "ready": "L'appareil est en mode appairage et prêt"
+        }
+      },
+      "add_device_manual": {
+        "title": "Ajouter un appareil (manuel)",
+        "description": "Ajoutez un nouvel appareil RFXCOM en saisissant manuellement les informations.\n\n**Pour ARC (Lighting1)** : Remplissez House Code et Unit Code uniquement (laissez Device ID vide).\n**Pour AC (Lighting2)** : Remplissez Device ID uniquement.",
+        "data": {
+          "name": "Nom de l'appareil",
+          "protocol": "Protocole (ou 'auto' pour détection automatique)",
+          "device_id": "ID de l'appareil (pour AC et autres - laissez vide pour ARC)",
+          "house_code": "Code maison (pour ARC - A, B, C, ..., P)",
+          "unit_code": "Code unité (pour ARC - 1, 2, 3, ..., 16)"
         }
       },
       "edit_device": {
@@ -99,7 +141,13 @@
       "lighting1_requires_codes": "Le code maison et le code unité sont requis pour ce protocole",
       "required_for_device_id": "L'ID de l'appareil est requis pour ce protocole",
       "required_for_temp_hum": "L'ID de l'appareil est requis pour le protocole TEMP_HUM",
-      "auto_protocol_requires_auto_registry": "Le protocole 'auto' nécessite que l'auto-détection soit activée. Veuillez activer l'auto-détection dans les options."
+      "auto_protocol_requires_auto_registry": "Le protocole 'auto' nécessite que l'auto-détection soit activée. Veuillez activer l'auto-détection dans les options.",
+      "pairing_not_ready": "Veuillez cocher la case pour confirmer que l'appareil est en mode appairage",
+      "pairing_command_failed": "Erreur lors de l'envoi de la commande d'appairage. Vérifiez la connexion RFXCOM.",
+      "pairing_timeout": "Aucun appareil détecté dans le délai imparti. Vérifiez que l'appareil est en mode appairage.",
+      "pairing_error": "Une erreur s'est produite lors de l'appairage",
+      "all_codes_used": "Toutes les combinaisons de codes sont déjà utilisées",
+      "all_ids_used": "Impossible de générer un ID unique"
     }
   },
   "entity": {

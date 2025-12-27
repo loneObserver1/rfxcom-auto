@@ -158,3 +158,98 @@ class TestSwitchSetupComplete:
         # Vérifier que async_write_ha_state a été appelé si la méthode a été exécutée
         # (peut ne pas être appelé si super() échoue)
 
+    @pytest.mark.asyncio
+    async def test_switch_turn_on_success(self, mock_coordinator):
+        """Test turn_on réussi."""
+        switch = RFXCOMSwitch(
+            coordinator=mock_coordinator,
+            name="Test Switch",
+            protocol=PROTOCOL_ARC,
+            house_code="A",
+            unit_code="1",
+            unique_id="test_switch",
+        )
+        switch.async_write_ha_state = AsyncMock()
+        switch._is_on = False
+        
+        await switch.async_turn_on()
+        
+        assert switch._is_on is True
+        assert switch.coordinator.send_command.called
+        assert switch.async_write_ha_state.called
+
+    @pytest.mark.asyncio
+    async def test_switch_turn_on_failure(self, mock_coordinator):
+        """Test turn_on échoué."""
+        switch = RFXCOMSwitch(
+            coordinator=mock_coordinator,
+            name="Test Switch",
+            protocol=PROTOCOL_ARC,
+            house_code="A",
+            unit_code="1",
+            unique_id="test_switch",
+        )
+        switch.async_write_ha_state = AsyncMock()
+        switch.coordinator.send_command = AsyncMock(return_value=False)
+        switch._is_on = False
+        
+        await switch.async_turn_on()
+        
+        assert switch._is_on is False
+        assert switch.coordinator.send_command.called
+
+    @pytest.mark.asyncio
+    async def test_switch_turn_off_success(self, mock_coordinator):
+        """Test turn_off réussi."""
+        switch = RFXCOMSwitch(
+            coordinator=mock_coordinator,
+            name="Test Switch",
+            protocol=PROTOCOL_ARC,
+            house_code="A",
+            unit_code="1",
+            unique_id="test_switch",
+        )
+        switch.async_write_ha_state = AsyncMock()
+        switch._is_on = True
+        
+        await switch.async_turn_off()
+        
+        assert switch._is_on is False
+        assert switch.coordinator.send_command.called
+        assert switch.async_write_ha_state.called
+
+    @pytest.mark.asyncio
+    async def test_switch_turn_off_failure(self, mock_coordinator):
+        """Test turn_off échoué."""
+        switch = RFXCOMSwitch(
+            coordinator=mock_coordinator,
+            name="Test Switch",
+            protocol=PROTOCOL_ARC,
+            house_code="A",
+            unit_code="1",
+            unique_id="test_switch",
+        )
+        switch.async_write_ha_state = AsyncMock()
+        switch.coordinator.send_command = AsyncMock(return_value=False)
+        switch._is_on = True
+        
+        await switch.async_turn_off()
+        
+        assert switch._is_on is True
+        assert switch.coordinator.send_command.called
+
+    def test_switch_is_on_property(self, mock_coordinator):
+        """Test de la propriété is_on."""
+        switch = RFXCOMSwitch(
+            coordinator=mock_coordinator,
+            name="Test Switch",
+            protocol=PROTOCOL_ARC,
+            house_code="A",
+            unit_code="1",
+            unique_id="test_switch",
+        )
+        switch._is_on = True
+        assert switch.is_on is True
+        switch._is_on = False
+        assert switch.is_on is False
+

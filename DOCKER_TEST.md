@@ -62,6 +62,20 @@ docker-compose down
 docker-compose restart
 ```
 
+### Mettre à jour l'intégration et redémarrer (recommandé)
+```bash
+./docker-update.sh
+```
+
+Ce script va :
+1. Vérifier que le conteneur existe et est en cours d'exécution
+2. Créer le lien symbolique si nécessaire
+3. Redémarrer le conteneur Home Assistant
+4. Afficher les logs récents
+5. Vérifier que Home Assistant est accessible
+
+**Note** : Comme le répertoire `custom_components` est monté comme volume, les modifications de code sont automatiquement disponibles. Il suffit de redémarrer le conteneur pour que Home Assistant recharge l'intégration.
+
 ### Accéder au shell du conteneur
 ```bash
 docker exec -it homeassistant-test bash
@@ -116,10 +130,34 @@ docker-compose logs -f homeassistant
 ```
 
 ### Accès aux ports série
-Le conteneur est configuré avec `privileged: true` et monte `/dev` pour accéder aux ports série. Si vous avez des problèmes, vérifiez les permissions :
+
+#### Sur Linux
+Le conteneur est configuré avec `privileged: true` et monte `/dev` pour accéder aux ports série. Vérifiez les permissions :
 ```bash
 ls -la /dev/ttyUSB*  # ou /dev/ttyACM*
 ```
+
+#### Sur macOS
+⚠️ **Important** : Sur macOS, le montage direct de `/dev` ne fonctionne pas car Docker Desktop utilise une VM Linux.
+
+**Solutions :**
+
+1. **Utiliser Docker Desktop USB Sharing (recommandé)** :
+   - Ouvrez Docker Desktop
+   - Allez dans **Settings > Resources > USB**
+   - Activez le partage USB et sélectionnez votre RFXCOM
+   - Redémarrez le conteneur : `./docker-update.sh`
+   - Vérifiez l'accessibilité : `./docker-check-usb.sh`
+
+2. **Utiliser la connexion réseau** :
+   - Si votre RFXCOM supporte la connexion réseau (RFXtrx433E par exemple)
+   - Configurez l'intégration avec l'option **Network** dans Home Assistant
+   - Utilisez l'adresse IP et le port du RFXCOM
+
+3. **Vérifier la détection** :
+   ```bash
+   ./docker-check-usb.sh
+   ```
 
 ## Nettoyage
 

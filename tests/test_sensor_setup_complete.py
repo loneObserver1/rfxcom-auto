@@ -160,3 +160,110 @@ class TestSensorSetupComplete:
         assert sensor._attr_name == "Test Humidity"
         assert sensor._device_id == "26627"
 
+    def test_temperature_sensor_value_none(self, mock_coordinator):
+        """Test de la valeur du capteur de température sans données."""
+        mock_coordinator.get_discovered_devices = Mock(return_value=[])
+        sensor = RFXCOMTemperatureSensor(
+            mock_coordinator,
+            "Test Temperature",
+            "99999",
+            "test_temp"
+        )
+        
+        value = sensor.native_value
+        
+        assert value is None
+
+    def test_temperature_sensor_value_update(self, mock_coordinator):
+        """Test de mise à jour de la valeur du capteur de température."""
+        sensor = RFXCOMTemperatureSensor(
+            mock_coordinator,
+            "Test Temperature",
+            "26627",
+            "test_temp"
+        )
+        
+        # Première lecture
+        value1 = sensor.native_value
+        assert value1 == 21.2
+        
+        # Mise à jour avec nouvelle valeur
+        mock_coordinator.get_discovered_devices = Mock(return_value=[
+            {
+                CONF_PROTOCOL: PROTOCOL_TEMP_HUM,
+                CONF_DEVICE_ID: "26627",
+                "temperature": 22.5,
+                "humidity": 40,
+            }
+        ])
+        
+        value2 = sensor.native_value
+        assert value2 == 22.5
+
+    def test_humidity_sensor_value_none(self, mock_coordinator):
+        """Test de la valeur du capteur d'humidité sans données."""
+        mock_coordinator.get_discovered_devices = Mock(return_value=[])
+        sensor = RFXCOMHumiditySensor(
+            mock_coordinator,
+            "Test Humidity",
+            "99999",
+            "test_hum"
+        )
+        
+        value = sensor.native_value
+        
+        assert value is None
+
+    def test_humidity_sensor_value_update(self, mock_coordinator):
+        """Test de mise à jour de la valeur du capteur d'humidité."""
+        sensor = RFXCOMHumiditySensor(
+            mock_coordinator,
+            "Test Humidity",
+            "26627",
+            "test_hum"
+        )
+        
+        # Première lecture
+        value1 = sensor.native_value
+        assert value1 == 39
+        
+        # Mise à jour avec nouvelle valeur
+        mock_coordinator.get_discovered_devices = Mock(return_value=[
+            {
+                CONF_PROTOCOL: PROTOCOL_TEMP_HUM,
+                CONF_DEVICE_ID: "26627",
+                "temperature": 22.5,
+                "humidity": 45,
+            }
+        ])
+        
+        value2 = sensor.native_value
+        assert value2 == 45
+
+    def test_sensor_properties(self, mock_coordinator):
+        """Test des propriétés des capteurs."""
+        temp_sensor = RFXCOMTemperatureSensor(
+            mock_coordinator,
+            "Test Temperature",
+            "26627",
+            "test_temp"
+        )
+        
+        # Vérifier que les attributs de classe sont définis
+        assert hasattr(temp_sensor, '_attr_device_class')
+        assert hasattr(temp_sensor, '_attr_native_unit_of_measurement')
+        assert hasattr(temp_sensor, '_attr_state_class')
+        # Les valeurs exactes dépendent des mocks, on vérifie juste qu'elles existent
+        
+        hum_sensor = RFXCOMHumiditySensor(
+            mock_coordinator,
+            "Test Humidity",
+            "26627",
+            "test_hum"
+        )
+        
+        # Vérifier que les attributs de classe sont définis
+        assert hasattr(hum_sensor, '_attr_device_class')
+        assert hasattr(hum_sensor, '_attr_native_unit_of_measurement')
+        assert hasattr(hum_sensor, '_attr_state_class')
+

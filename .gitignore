@@ -23,6 +23,7 @@ wheels/
 # Virtual environments
 venv/
 ha_config/
+tmp/
 ENV/
 env/
 

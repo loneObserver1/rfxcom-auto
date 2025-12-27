@@ -44,14 +44,31 @@ async def async_setup_entry(
             device_config.get("name", "Sans nom"),
             device_config.get(CONF_PROTOCOL),
         )
+        
+        # Générer un unique_id unique en incluant l'index et le protocole
+        protocol = device_config.get(CONF_PROTOCOL, "")
+        device_id = device_config.get(CONF_DEVICE_ID)
+        house_code = device_config.get(CONF_HOUSE_CODE)
+        unit_code = device_config.get(CONF_UNIT_CODE)
+        
+        # Construire l'identifiant unique avec l'index pour garantir l'unicité
+        if device_id:
+            unique_id = f"{entry.entry_id}_{protocol}_{device_id}_{idx}"
+        elif house_code and unit_code:
+            unique_id = f"{entry.entry_id}_{protocol}_{house_code}_{unit_code}_{idx}"
+        else:
+            # Fallback: utiliser le nom et l'index
+            name_slug = device_config.get("name", "unknown").lower().replace(" ", "_")
+            unique_id = f"{entry.entry_id}_{protocol}_{name_slug}_{idx}"
+        
         entity = RFXCOMSwitch(
             coordinator=coordinator,
             name=device_config["name"],
-            protocol=device_config[CONF_PROTOCOL],
-            device_id=device_config.get(CONF_DEVICE_ID),
-            house_code=device_config.get(CONF_HOUSE_CODE),
-            unit_code=device_config.get(CONF_UNIT_CODE),
-            unique_id=f"{entry.entry_id}_{device_config.get(CONF_DEVICE_ID, device_config.get(CONF_HOUSE_CODE, ''))}_{device_config.get(CONF_UNIT_CODE, '')}",
+            protocol=protocol,
+            device_id=device_id,
+            house_code=house_code,
+            unit_code=unit_code,
+            unique_id=unique_id,
         )
         entities.append(entity)
 
@@ -96,8 +113,8 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Allume l'interrupteur."""
-        _LOGGER.debug(
-            "Turn ON: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
+        _LOGGER.info(
+            "🔵 Turn ON: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
             self._attr_name,
             self._protocol,
             self._device_id,
@@ -115,14 +132,14 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
         if success:
             self._is_on = True
             self.async_write_ha_state()
-            _LOGGER.debug("État mis à jour: ON pour %s", self._attr_name)
+            _LOGGER.info("✅ État mis à jour: ON pour %s", self._attr_name)
         else:
-            _LOGGER.error("Échec de l'envoi de la commande ON pour %s", self._attr_name)
+            _LOGGER.error("❌ Échec de l'envoi de la commande ON pour %s", self._attr_name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Éteint l'interrupteur."""
-        _LOGGER.debug(
-            "Turn OFF: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
+        _LOGGER.info(
+            "🔴 Turn OFF: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
             self._attr_name,
             self._protocol,
             self._device_id,
@@ -140,7 +157,7 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
         if success:
             self._is_on = False
             self.async_write_ha_state()
-            _LOGGER.debug("État mis à jour: OFF pour %s", self._attr_name)
+            _LOGGER.info("✅ État mis à jour: OFF pour %s", self._attr_name)
         else:
-            _LOGGER.error("Échec de l'envoi de la commande OFF pour %s", self._attr_name)
+            _LOGGER.error("❌ Échec de l'envoi de la commande OFF pour %s", self._attr_name)
 

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   homeassistant:
     container_name: homeassistant-test
@@ -9,13 +7,14 @@ services:
       - ./ha_config:/config
       # Custom components (lien symbolique vers notre intégration)
       - ./custom_components:/config/custom_components
-      # Pour accéder aux ports série (si nécessaire)
-      - /dev:/dev
+    # Pour accéder aux ports série sur Linux (sur macOS, utilisez Docker Desktop USB passthrough)
+    # Sur macOS, le mapping direct ne fonctionne pas, utilisez la connexion réseau ou Docker Desktop USB
     ports:
       - "8123:8123"
+      # Port pour le tunnel USB série (si vous utilisez docker-usb-tunnel.sh)
+      - "8888:8888"
     restart: unless-stopped
     privileged: true
     environment:
       - TZ=Europe/Paris
-    network_mode: host
 

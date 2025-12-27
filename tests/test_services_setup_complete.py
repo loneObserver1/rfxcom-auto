@@ -154,3 +154,62 @@ class TestServicesComplete:
         assert devices[0][CONF_PROTOCOL] == PROTOCOL_TEMP_HUM
         assert "sensor_data" in devices[0]
 
+    @pytest.mark.asyncio
+    async def test_pair_device_arc_missing_codes(self, mock_hass_with_reload, mock_config_entry):
+        """Test d'appairage ARC avec codes manquants."""
+        mock_hass_with_reload.config_entries.async_entries.return_value = [mock_config_entry]
+        
+        await async_setup_services(mock_hass_with_reload)
+        service_func = mock_hass_with_reload.services.async_register.call_args[0][2]
+        
+        call = Mock()
+        call.data = {
+            CONF_PROTOCOL: PROTOCOL_ARC,
+            "name": "Test ARC",
+        }
+        
+        await service_func(call)
+        
+        # L'appareil ne devrait pas être ajouté
+        devices = mock_config_entry.options.get("devices", [])
+        assert len(devices) == 0
+
+    @pytest.mark.asyncio
+    async def test_pair_device_ac_missing_device_id(self, mock_hass_with_reload, mock_config_entry):
+        """Test d'appairage AC sans device_id."""
+        mock_hass_with_reload.config_entries.async_entries.return_value = [mock_config_entry]
+        
+        await async_setup_services(mock_hass_with_reload)
+        service_func = mock_hass_with_reload.services.async_register.call_args[0][2]
+        
+        call = Mock()
+        call.data = {
+            CONF_PROTOCOL: PROTOCOL_AC,
+            "name": "Test AC",
+        }
+        
+        await service_func(call)
+        
+        devices = mock_config_entry.options.get("devices", [])
+        assert len(devices) == 0
+
+    @pytest.mark.asyncio
+    async def test_pair_device_no_entries(self, mock_hass_with_reload):
+        """Test d'appairage sans entrées configurées."""
+        mock_hass_with_reload.config_entries.async_entries.return_value = []
+        
+        await async_setup_services(mock_hass_with_reload)
+        service_func = mock_hass_with_reload.services.async_register.call_args[0][2]
+        
+        call = Mock()
+        call.data = {
+            CONF_PROTOCOL: PROTOCOL_ARC,
+            "name": "Test",
+            CONF_HOUSE_CODE: "A",
+            CONF_UNIT_CODE: "1",
+        }
+        
+        await service_func(call)
+        
+        # Ne devrait pas lever d'exception
+
