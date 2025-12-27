@@ -22,6 +22,7 @@ from .const import (
     CONNECTION_TYPE_NETWORK,
     PROTOCOL_AC,
     PROTOCOL_ARC,
+    PROTOCOL_TEMP_HUM,
     CONF_BAUDRATE,
     CONF_CONNECTION_TYPE,
     CONF_HOST,
@@ -31,6 +32,8 @@ from .const import (
     CONF_HOUSE_CODE,
     CONF_DEVICE_ID,
     CONF_PAIRING_MODE,
+    CONF_AUTO_REGISTRY,
+    DEFAULT_AUTO_REGISTRY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +52,7 @@ STEP_USER_DATA_SCHEMA_USB = vol.Schema(
         vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.All(
             vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
         ),
+        vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
     }
 )
 
@@ -58,12 +62,13 @@ STEP_USER_DATA_SCHEMA_NETWORK = vol.Schema(
         vol.Required(CONF_NETWORK_PORT, default=DEFAULT_NETWORK_PORT): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=65535)
         ),
+        vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
     }
 )
 
 STEP_DEVICE_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_PROTOCOL): vol.In([PROTOCOL_AC, PROTOCOL_ARC]),
+        vol.Required(CONF_PROTOCOL): vol.In([PROTOCOL_AC, PROTOCOL_ARC, PROTOCOL_TEMP_HUM]),
         vol.Optional(CONF_DEVICE_ID): str,
         vol.Optional(CONF_HOUSE_CODE): str,
         vol.Optional(CONF_UNIT_CODE): str,
@@ -108,8 +113,11 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if not errors:
             user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_USB
+            # Séparer data et options
+            data = {k: v for k, v in user_input.items() if k != CONF_AUTO_REGISTRY}
+            options = {CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)}
             return self.async_create_entry(
-                title=f"RFXCOM USB ({user_input[CONF_PORT]})", data=user_input
+                title=f"RFXCOM USB ({user_input[CONF_PORT]})", data=data, options=options
             )
 
         return self.async_show_form(
@@ -131,9 +139,13 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if not errors:
             user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_NETWORK
+            # Séparer data et options
+            data = {k: v for k, v in user_input.items() if k != CONF_AUTO_REGISTRY}
+            options = {CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)}
             return self.async_create_entry(
                 title=f"RFXCOM Network ({user_input[CONF_HOST]}:{user_input[CONF_NETWORK_PORT]})",
-                data=user_input,
+                data=data,
+                options=options,
             )
 
         return self.async_show_form(
@@ -164,13 +176,17 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Affiche la liste des appareils."""
+        """Affiche la liste des appareils et les options."""
         devices = self.config_entry.options.get("devices", [])
+        auto_registry = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
         
         if user_input is None:
             # Créer les options pour le sélecteur
-            options = ["add"]
-            option_labels = {"add": "➕ Ajouter un appareil"}
+            options = ["add", "auto_registry"]
+            option_labels = {
+                "add": "➕ Ajouter un appareil",
+                "auto_registry": f"🔍 Auto-détection: {'Activée' if auto_registry else 'Désactivée'}",
+            }
             
             for idx, device in enumerate(devices):
                 device_name = device.get("name", f"Appareil {idx+1}")
@@ -192,12 +208,15 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                         f"- {d.get('name', 'Sans nom')} ({d.get('protocol', 'N/A')})"
                         for d in devices
                     ]) if devices else "Aucun appareil configuré",
+                    "auto_registry_status": "Activée" if auto_registry else "Désactivée",
                 },
             )
         
         action = user_input.get("action")
         if action == "add":
             return await self.async_step_add_device()
+        elif action == "auto_registry":
+            return await self.async_step_auto_registry()
         elif action.startswith("edit_"):
             idx = int(action.split("_")[1])
             return await self.async_step_edit_device(idx)
@@ -206,6 +225,26 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_delete_device(idx)
         
         return await self.async_step_init()
+
+    async def async_step_auto_registry(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure l'auto-registry."""
+        current_value = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
+        
+        if user_input is None:
+            return self.async_show_form(
+                step_id="auto_registry",
+                data_schema=vol.Schema({
+                    vol.Required(CONF_AUTO_REGISTRY, default=current_value): bool,
+                }),
+            )
+        
+        # Mettre à jour l'option
+        options = dict(self.config_entry.options)
+        options[CONF_AUTO_REGISTRY] = user_input[CONF_AUTO_REGISTRY]
+        
+        return self.async_create_entry(title="", data=options)
 
     async def async_step_add_device(
         self, user_input: dict[str, Any] | None = None
@@ -226,6 +265,8 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             not user_input.get(CONF_HOUSE_CODE) or not user_input.get(CONF_UNIT_CODE)
         ):
             errors["base"] = "arc_requires_codes"
+        elif protocol == PROTOCOL_TEMP_HUM and not user_input.get(CONF_DEVICE_ID):
+            errors[CONF_DEVICE_ID] = "required_for_temp_hum"
 
         if not errors:
             # Récupérer les appareils existants
@@ -242,6 +283,10 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             elif protocol == PROTOCOL_ARC:
                 device_config[CONF_HOUSE_CODE] = user_input[CONF_HOUSE_CODE]
                 device_config[CONF_UNIT_CODE] = user_input[CONF_UNIT_CODE]
+            elif protocol == PROTOCOL_TEMP_HUM:
+                device_config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
+                # Les données du capteur seront mises à jour automatiquement lors de la réception
+                device_config["sensor_data"] = {}
 
             # Ajouter le nouvel appareil
             devices.append(device_config)
@@ -271,7 +316,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             # Pré-remplir le formulaire avec les valeurs existantes
             schema = vol.Schema({
                 vol.Required("name", default=device.get("name")): str,
-                vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In([PROTOCOL_AC, PROTOCOL_ARC]),
+                vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In([PROTOCOL_AC, PROTOCOL_ARC, PROTOCOL_TEMP_HUM]),
                 vol.Optional(CONF_DEVICE_ID, default=device.get(CONF_DEVICE_ID, "")): str,
                 vol.Optional(CONF_HOUSE_CODE, default=device.get(CONF_HOUSE_CODE, "")): str,
                 vol.Optional(CONF_UNIT_CODE, default=device.get(CONF_UNIT_CODE, "")): str,
@@ -289,10 +334,19 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             device[CONF_DEVICE_ID] = user_input.get(CONF_DEVICE_ID, "")
             device.pop(CONF_HOUSE_CODE, None)
             device.pop(CONF_UNIT_CODE, None)
+            device.pop("sensor_data", None)
         elif protocol == PROTOCOL_ARC:
             device[CONF_HOUSE_CODE] = user_input.get(CONF_HOUSE_CODE, "")
             device[CONF_UNIT_CODE] = user_input.get(CONF_UNIT_CODE, "")
             device.pop(CONF_DEVICE_ID, None)
+            device.pop("sensor_data", None)
+        elif protocol == PROTOCOL_TEMP_HUM:
+            device[CONF_DEVICE_ID] = user_input.get(CONF_DEVICE_ID, "")
+            device.pop(CONF_HOUSE_CODE, None)
+            device.pop(CONF_UNIT_CODE, None)
+            # Les données du capteur seront mises à jour automatiquement
+            if "sensor_data" not in device:
+                device["sensor_data"] = {}
 
         devices[device_idx] = device
         

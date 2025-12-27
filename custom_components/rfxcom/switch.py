@@ -37,9 +37,16 @@ async def async_setup_entry(
 
     # Charger les appareils configurés
     devices = entry.options.get("devices", [])
+    _LOGGER.debug("Configuration de %s appareils RFXCOM", len(devices))
     
     entities = []
-    for device_config in devices:
+    for idx, device_config in enumerate(devices):
+        _LOGGER.debug(
+            "Création entité %s: %s (protocol=%s)",
+            idx + 1,
+            device_config.get("name", "Sans nom"),
+            device_config.get(CONF_PROTOCOL),
+        )
         entity = RFXCOMSwitch(
             coordinator=coordinator,
             name=device_config["name"],
@@ -51,6 +58,7 @@ async def async_setup_entry(
         )
         entities.append(entity)
 
+    _LOGGER.info("Création de %s entités switch RFXCOM", len(entities))
     async_add_entities(entities)
 
 
@@ -94,6 +102,14 @@ class RFXCOMSwitch(
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Allume l'interrupteur."""
+        _LOGGER.debug(
+            "Turn ON: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
+            self.name,
+            self._protocol,
+            self._device_id,
+            self._house_code,
+            self._unit_code,
+        )
         success = await self.coordinator.send_command(
             protocol=self._protocol,
             device_id=self._device_id or "",
@@ -105,11 +121,20 @@ class RFXCOMSwitch(
         if success:
             self._is_on = True
             self.async_write_ha_state()
+            _LOGGER.debug("État mis à jour: ON pour %s", self.name)
         else:
-            _LOGGER.error("Échec de l'envoi de la commande ON")
+            _LOGGER.error("Échec de l'envoi de la commande ON pour %s", self.name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Éteint l'interrupteur."""
+        _LOGGER.debug(
+            "Turn OFF: %s (protocol=%s, device_id=%s, house_code=%s, unit_code=%s)",
+            self.name,
+            self._protocol,
+            self._device_id,
+            self._house_code,
+            self._unit_code,
+        )
         success = await self.coordinator.send_command(
             protocol=self._protocol,
             device_id=self._device_id or "",
@@ -121,6 +146,7 @@ class RFXCOMSwitch(
         if success:
             self._is_on = False
             self.async_write_ha_state()
+            _LOGGER.debug("État mis à jour: OFF pour %s", self.name)
         else:
-            _LOGGER.error("Échec de l'envoi de la commande OFF")
+            _LOGGER.error("Échec de l'envoi de la commande OFF pour %s", self.name)
 
