@@ -7,9 +7,18 @@
       },
       "usb": {
         "title": "Configuration USB",
-        "description": "Configurez la connexion série USB",
+        "description": "Sélectionnez le port série USB détecté ou saisissez-le manuellement",
         "data": {
-          "port": "Port série",
+          "port": "Port série (détectés automatiquement)",
+          "baudrate": "Vitesse de transmission (baud)",
+          "auto_registry": "Détection automatique des appareils"
+        }
+      },
+      "usb_manual": {
+        "title": "Configuration USB - Saisie manuelle",
+        "description": "Entrez le chemin du port série manuellement",
+        "data": {
+          "port": "Port série (ex: /dev/ttyUSB0 ou COM3)",
           "baudrate": "Vitesse de transmission (baud)",
           "auto_registry": "Détection automatique des appareils"
         }

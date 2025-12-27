@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import serial.tools.list_ports
 from typing import Any
 
 import voluptuous as vol
@@ -46,15 +47,86 @@ STEP_CONNECTION_TYPE_SCHEMA = vol.Schema(
     }
 )
 
-STEP_USER_DATA_SCHEMA_USB = vol.Schema(
-    {
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): str,
+def _get_available_ports() -> list[str]:
+    """Retourne la liste des ports série disponibles."""
+    ports = []
+    excluded_keywords = ["bluetooth", "debug", "incoming", "jabra", "modem"]
+    
+    try:
+        available_ports = serial.tools.list_ports.comports()
+        for port in available_ports:
+            port_str = port.device
+            description_lower = (port.description or "").lower()
+            
+            # Filtrer les ports qui ne sont probablement pas des ports série RFXCOM
+            if any(keyword in description_lower for keyword in excluded_keywords):
+                _LOGGER.debug("Port exclu (non RFXCOM): %s (%s)", port_str, port.description)
+                continue
+            
+            # Filtrer les ports cu.* sur macOS (utiliser tty.*)
+            if port_str.startswith("/dev/cu.") and not port_str.startswith("/dev/cu.usbserial"):
+                # Sur macOS, préférer tty.* mais garder cu.usbserial
+                tty_equivalent = port_str.replace("/dev/cu.", "/dev/tty.")
+                if tty_equivalent not in [p.device for p in available_ports]:
+                    continue
+            
+            ports.append(port_str)
+            _LOGGER.debug("Port série détecté: %s (%s)", port_str, port.description or "Sans description")
+    except Exception as err:
+        _LOGGER.warning("Erreur lors de la détection des ports série: %s", err)
+    
+    # Ajouter les ports par défaut s'ils ne sont pas déjà dans la liste
+    default_ports = [
+        "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2",
+        "/dev/ttyACM0", "/dev/ttyACM1",
+        "/dev/tty.usbserial", "/dev/tty.usbmodem",
+        "COM1", "COM2", "COM3", "COM4",
+    ]
+    for port in default_ports:
+        if port not in ports:
+            ports.append(port)
+    
+    # Trier les ports (ports USB en premier)
+    ports.sort(key=lambda x: (
+        0 if "usb" in x.lower() or "usbmodem" in x.lower() or "usbserial" in x.lower() else 1,
+        x
+    ))
+    
+    return ports
+
+
+def _build_usb_schema() -> vol.Schema:
+    """Construit le schéma USB avec les ports disponibles."""
+    available_ports = _get_available_ports()
+    
+    # Créer les options pour le sélecteur avec descriptions
+    port_options = {}
+    for port in available_ports:
+        try:
+            # Essayer d'obtenir plus d'infos sur le port
+            port_info = next((p for p in serial.tools.list_ports.comports() if p.device == port), None)
+            if port_info:
+                label = f"{port} - {port_info.description}" if port_info.description else port
+            else:
+                label = port
+            port_options[port] = label
+        except Exception:
+            port_options[port] = port
+    
+    # Ajouter l'option de saisie manuelle
+    port_options["manual"] = "✏️ Saisie manuelle..."
+    
+    default_port = DEFAULT_PORT if DEFAULT_PORT in available_ports else (available_ports[0] if available_ports else DEFAULT_PORT)
+    
+    schema_dict = {
+        vol.Required(CONF_PORT, default=default_port): vol.In(port_options),
         vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.All(
             vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
         ),
         vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
     }
-)
+    
+    return vol.Schema(schema_dict)
 
 STEP_USER_DATA_SCHEMA_NETWORK = vol.Schema(
     {
@@ -103,8 +175,49 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Configuration USB."""
         if user_input is None:
+            schema = await self.hass.async_add_executor_job(_build_usb_schema)
             return self.async_show_form(
-                step_id="usb", data_schema=STEP_USER_DATA_SCHEMA_USB
+                step_id="usb", data_schema=schema
+            )
+
+        errors = {}
+        port = user_input.get(CONF_PORT)
+        
+        # Si "Saisie manuelle" est sélectionné, demander le port
+        if port == "manual":
+            return await self.async_step_usb_manual()
+        
+        if not port:
+            errors["base"] = "port_required"
+
+        if not errors:
+            user_input[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_USB
+            # Séparer data et options
+            data = {k: v for k, v in user_input.items() if k != CONF_AUTO_REGISTRY}
+            options = {CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)}
+            return self.async_create_entry(
+                title=f"RFXCOM USB ({port})", data=data, options=options
+            )
+
+        schema = await self.hass.async_add_executor_job(_build_usb_schema)
+        return self.async_show_form(
+            step_id="usb", data_schema=schema, errors=errors
+        )
+
+    async def async_step_usb_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configuration USB avec saisie manuelle du port."""
+        if user_input is None:
+            schema = vol.Schema({
+                vol.Required(CONF_PORT): str,
+                vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.All(
+                    vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
+                ),
+                vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
+            })
+            return self.async_show_form(
+                step_id="usb_manual", data_schema=schema
             )
 
         errors = {}
@@ -120,8 +233,15 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title=f"RFXCOM USB ({user_input[CONF_PORT]})", data=data, options=options
             )
 
+        schema = vol.Schema({
+            vol.Required(CONF_PORT): str,
+            vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.All(
+                vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
+            ),
+            vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
+        })
         return self.async_show_form(
-            step_id="usb", data_schema=STEP_USER_DATA_SCHEMA_USB, errors=errors
+            step_id="usb_manual", data_schema=schema, errors=errors
         )
 
     async def async_step_network(
