@@ -184,6 +184,47 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Étape initiale de configuration."""
         if user_input is None:
+            # Détecter automatiquement les ports USB disponibles
+            try:
+                available_ports = await self.hass.async_add_executor_job(
+                    serial.tools.list_ports.comports
+                )
+                
+                # Filtrer pour ne garder que les ports USB réels détectés
+                real_usb_ports = []
+                excluded_keywords = ["bluetooth", "debug", "incoming", "jabra", "modem"]
+                
+                for port in available_ports:
+                    port_str = port.device
+                    description_lower = (port.description or "").lower()
+                    
+                    # Exclure les ports non-RFXCOM
+                    if any(keyword in description_lower for keyword in excluded_keywords):
+                        continue
+                    
+                    # Vérifier si c'est un port USB réel (pas un port par défaut)
+                    is_usb = any(keyword in port_str.lower() for keyword in [
+                        "usb", "usbmodem", "usbserial", "ttyusb", "ttyacm"
+                    ])
+                    
+                    # Sur macOS, préférer tty.* mais garder cu.usbserial
+                    if port_str.startswith("/dev/cu.") and not port_str.startswith("/dev/cu.usbserial"):
+                        tty_equivalent = port_str.replace("/dev/cu.", "/dev/tty.")
+                        if tty_equivalent not in [p.device for p in available_ports]:
+                            continue
+                    
+                    if is_usb:
+                        real_usb_ports.append(port_str)
+                        _LOGGER.debug("Port USB détecté: %s (%s)", port_str, port.description or "Sans description")
+                
+                # Si des ports USB sont détectés, afficher directement le formulaire USB
+                if real_usb_ports:
+                    _LOGGER.info("Ports USB détectés: %s, affichage direct du formulaire USB", real_usb_ports)
+                    return await self.async_step_usb()
+            except Exception as err:
+                _LOGGER.warning("Erreur lors de la détection des ports USB: %s", err)
+            
+            # Sinon, afficher le menu de sélection
             return self.async_show_form(
                 step_id="user", data_schema=STEP_CONNECTION_TYPE_SCHEMA
             )
