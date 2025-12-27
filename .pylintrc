@@ -39,7 +39,6 @@ disable=
     consider-using-join,
     consider-using-max-builtin,
     consider-using-min-builtin,
-    consider-using-sorted,
     consider-using-in,
     consider-using-dict-items,
     trailing-whitespace,
