@@ -182,3 +182,4 @@ class TestRFXCOMSensors:
         call_args = async_add_entities.call_args[0][0]
         assert len(call_args) == 2  # Température + Humidité
 
+

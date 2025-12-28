@@ -195,3 +195,4 @@ class TestPacketParsing:
         assert device_info is not None
         assert device_info[const.CONF_PROTOCOL] == const.PROTOCOL_BLYSS
 
+

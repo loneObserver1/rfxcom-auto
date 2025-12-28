@@ -152,3 +152,4 @@ class TestRFXCOMCoordinator:
         
         assert result is False
 
+

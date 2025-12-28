@@ -11,6 +11,8 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature, PERCENTAGE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -44,11 +46,29 @@ async def async_setup_entry(
             sensor_data = device_config.get("sensor_data", {})
             name = device_config.get("name", f"RFXCOM Temp/Hum {device_id}")
             unique_id = f"{entry.entry_id}_temp_hum_{device_id}"
+            device_identifier = f"{PROTOCOL_TEMP_HUM}_{device_id}"
 
             _LOGGER.debug(
                 "Création capteur TEMP_HUM: %s (device_id=%s)",
                 name,
                 device_id,
+            )
+
+            # Créer ou récupérer le device dans le device registry
+            device_registry = dr.async_get(hass)
+            device_entry = device_registry.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                identifiers={(DOMAIN, device_identifier)},
+                name=name,
+                manufacturer="RFXCOM",
+                model=PROTOCOL_TEMP_HUM,
+            )
+
+            device_info = DeviceInfo(
+                identifiers={(DOMAIN, device_identifier)},
+                name=name,
+                manufacturer="RFXCOM",
+                model=PROTOCOL_TEMP_HUM,
             )
 
             # Créer les entités température et humidité
@@ -58,6 +78,7 @@ async def async_setup_entry(
                     name=f"{name} Temperature",
                     device_id=device_id,
                     unique_id=f"{unique_id}_temp",
+                    device_info=device_info,
                 )
             )
             entities.append(
@@ -66,6 +87,7 @@ async def async_setup_entry(
                     name=f"{name} Humidity",
                     device_id=device_id,
                     unique_id=f"{unique_id}_hum",
+                    device_info=device_info,
                 )
             )
 
@@ -88,11 +110,13 @@ class RFXCOMTemperatureSensor(
         name: str,
         device_id: str,
         unique_id: str,
+        device_info: DeviceInfo | None = None,
     ) -> None:
         """Initialise le capteur de température."""
         super().__init__(coordinator)
         self._attr_name = name
         self._attr_unique_id = unique_id
+        self._attr_device_info = device_info
         self._device_id = device_id
         self._native_value: float | None = None
 
@@ -136,11 +160,13 @@ class RFXCOMHumiditySensor(
         name: str,
         device_id: str,
         unique_id: str,
+        device_info: DeviceInfo | None = None,
     ) -> None:
         """Initialise le capteur d'humidité."""
         super().__init__(coordinator)
         self._attr_name = name
         self._attr_unique_id = unique_id
+        self._attr_device_info = device_info
         self._device_id = device_id
         self._native_value: int | None = None
 

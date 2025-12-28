@@ -10,3 +10,4 @@ python3 -m pytest tests/test_coordinator_functions.py tests/test_const.py -v --c
 echo ""
 echo "=== Rapport de couverture généré dans htmlcov/index.html ==="
 
+

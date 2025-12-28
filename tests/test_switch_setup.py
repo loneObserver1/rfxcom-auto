@@ -145,3 +145,4 @@ class TestSwitchSetup:
         # Test (ne devrait pas lever d'exception)
         # Note: On ne peut pas vraiment tester sans un vrai hass
 
+

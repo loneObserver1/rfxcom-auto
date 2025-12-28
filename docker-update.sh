@@ -96,3 +96,4 @@ echo "   Vérifiez les logs avec: docker-compose logs -f homeassistant"
 echo "   Ou ouvrez http://localhost:8123 dans votre navigateur"
 echo ""
 
+

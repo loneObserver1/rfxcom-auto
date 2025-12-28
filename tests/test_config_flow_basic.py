@@ -229,3 +229,4 @@ class TestOptionsFlowBasic:
         devices = config_entry.options.get("devices", [])
         assert len(devices) == 0
 
+

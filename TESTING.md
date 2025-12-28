@@ -140,3 +140,4 @@ Commande envoyée: protocole=ARC, device=A/1, commande=ON, bytes=071001624101010
 - Vérifiez le format des commandes dans les logs
 - Testez avec un outil externe (minicom, telnet)
 
+

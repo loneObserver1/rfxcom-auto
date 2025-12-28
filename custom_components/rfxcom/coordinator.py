@@ -220,8 +220,17 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                         protocol, subtype, house_code, unit_code, command
                     )
                 elif packet_type == PACKET_TYPE_LIGHTING2:
+                    # Convertir unit_code en int si fourni (pour AC)
+                    # Par défaut 1 pour AC si non fourni
+                    unit_code_int = 1  # Par défaut 1 pour AC
+                    if unit_code:
+                        try:
+                            unit_code_int = int(unit_code)
+                        except (ValueError, TypeError):
+                            unit_code_int = 1  # Par défaut 1 pour AC en cas d'erreur
+                    _LOGGER.debug("AC command: device_id=%s, unit_code=%s (int=%s), command=%s", device_id, unit_code, unit_code_int, command)
                     cmd_bytes = self._build_lighting2_command(
-                        protocol, subtype, device_id, command
+                        protocol, subtype, device_id, command, unit_code_int
                     )
                 elif packet_type == PACKET_TYPE_LIGHTING3:
                     cmd_bytes = self._build_lighting3_command(
@@ -380,6 +389,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         subtype: int,
         device_id: str | None,
         command: str,
+        unit_code: int | None = None,
     ) -> bytes:
         """Construit une commande Lighting2 (AC, HomeEasy EU, etc.).
 
@@ -391,8 +401,9 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         # Convertir device_id en 4 bytes
         device_bytes = self._hex_string_to_bytes(device_id or "00000000", 4)
 
-        # Unit code (généralement 0 pour AC)
-        unit_code = 0
+        # Unit code (généralement 0 ou 1 pour AC, par défaut 1)
+        if unit_code is None:
+            unit_code = 1  # Par défaut 1 pour AC (comme dans la trame de l'utilisateur)
 
         # Commande
         cmd_byte = 0x01 if command == CMD_ON else 0x00
@@ -569,6 +580,11 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             # Supprimer les espaces et les séparateurs
             hex_str = hex_str.replace(" ", "").replace(":", "").replace("-", "")
 
+            # Si le nombre de caractères est impair, ajouter un 0 devant
+            if len(hex_str) % 2 == 1:
+                hex_str = "0" + hex_str
+                _LOGGER.debug("ID hex impair, ajout d'un 0 devant: %s", hex_str)
+
             # Convertir en bytes
             device_bytes = bytes.fromhex(hex_str)
 
@@ -581,8 +597,8 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 device_bytes = device_bytes[-length:]
 
             return device_bytes
-        except ValueError:
-            _LOGGER.error("Erreur lors de la conversion hex: %s", hex_str)
+        except ValueError as err:
+            _LOGGER.error("Erreur lors de la conversion hex: %s (%s)", hex_str, err)
             return bytes(length)
 
     async def _async_receive_loop(self) -> None:
@@ -659,13 +675,13 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     continue
 
                 # Parser le paquet
-                _LOGGER.debug("Parsing du paquet: %s", packet.hex())
+                _LOGGER.info("📥 Paquet reçu: %s bytes, hex=%s", len(packet), packet.hex().upper())
                 device_info = self._parse_packet(packet)
                 if device_info:
-                    _LOGGER.debug("Appareil parsé: %s", device_info)
+                    _LOGGER.info("✅ Appareil parsé: %s", device_info)
                     await self._handle_discovered_device(device_info)
                 else:
-                    _LOGGER.debug("Paquet non reconnu ou ignoré")
+                    _LOGGER.debug("⚠️ Paquet non reconnu ou ignoré")
 
             except asyncio.CancelledError:
                 _LOGGER.info("Réception des messages RFXCOM arrêtée")
@@ -977,10 +993,10 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
 
         # Si auto-registry est activé, ajouter automatiquement
         if self.auto_registry:
-            _LOGGER.debug("Auto-registry activé, enregistrement automatique...")
+            _LOGGER.info("🔍 Auto-registry activé, enregistrement automatique de %s...", device_info[CONF_PROTOCOL])
             await self._auto_register_device(device_info, unique_id)
         else:
-            _LOGGER.debug("Auto-registry désactivé, appareil non enregistré automatiquement")
+            _LOGGER.info("⚠️ Auto-registry désactivé (auto_registry=%s), appareil non enregistré automatiquement", self.auto_registry)
 
     async def _auto_register_device(
         self, device_info: dict[str, Any], unique_id: str

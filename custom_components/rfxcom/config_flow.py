@@ -684,13 +684,13 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                         step_id="add_device_manual", data_schema=schema
                     )
             else:
-                # Lighting2-6: besoin de device_id
+                # Lighting2-6: besoin de device_id, unit_code optionnel (1 par défaut pour AC)
                 if not user_input.get(CONF_DEVICE_ID):
                     schema = vol.Schema({
                         vol.Required("name", default=user_input.get("name", "")): str,
                         vol.Required(CONF_PROTOCOL, default=protocol): vol.In([protocol]),
                         vol.Required(CONF_DEVICE_ID): str,
-                        vol.Optional(CONF_UNIT_CODE): str,
+                        vol.Optional(CONF_UNIT_CODE, default="1"): str,  # Par défaut 1 pour AC
                     })
                     return self.async_show_form(
                         step_id="add_device_manual", data_schema=schema
@@ -763,8 +763,10 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 device_config[CONF_UNIT_CODE] = user_input[CONF_UNIT_CODE]
             elif protocol in lighting2_protocols + lighting3_protocols + lighting4_protocols + lighting5_protocols + lighting6_protocols:
                 device_config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
-                if user_input.get(CONF_UNIT_CODE):
-                    device_config[CONF_UNIT_CODE] = user_input[CONF_UNIT_CODE]
+                # Pour AC, unit_code est généralement 1 (par défaut si non fourni)
+                unit_code = user_input.get(CONF_UNIT_CODE, "1")
+                if unit_code:
+                    device_config[CONF_UNIT_CODE] = unit_code
             elif protocol == PROTOCOL_TEMP_HUM:
                 device_config[CONF_DEVICE_ID] = user_input[CONF_DEVICE_ID]
                 # Les données du capteur seront mises à jour automatiquement lors de la réception

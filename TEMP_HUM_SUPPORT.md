@@ -128,3 +128,4 @@ Battery       = OK
 
 Ce paquet sera automatiquement parsé et les valeurs seront disponibles dans Home Assistant !
 
+

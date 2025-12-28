@@ -74,3 +74,4 @@ echo "   1. Redémarrez le conteneur: ./docker-update.sh"
 echo "   2. Vérifiez l'accessibilité: ./docker-check-usb.sh"
 echo ""
 
+

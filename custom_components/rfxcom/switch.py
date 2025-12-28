@@ -7,6 +7,8 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -58,12 +60,25 @@ async def async_setup_entry(
         # Construire l'identifiant unique avec l'index pour garantir l'unicité
         if device_id:
             unique_id = f"{entry.entry_id}_{protocol}_{device_id}_{idx}"
+            device_identifier = f"{protocol}_{device_id}"
         elif house_code and unit_code:
             unique_id = f"{entry.entry_id}_{protocol}_{house_code}_{unit_code}_{idx}"
+            device_identifier = f"{protocol}_{house_code}_{unit_code}"
         else:
             # Fallback: utiliser le nom et l'index
             name_slug = device_config.get("name", "unknown").lower().replace(" ", "_")
             unique_id = f"{entry.entry_id}_{protocol}_{name_slug}_{idx}"
+            device_identifier = f"{protocol}_{name_slug}"
+        
+        # Créer ou récupérer le device dans le device registry
+        device_registry = dr.async_get(hass)
+        device_entry = device_registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, device_identifier)},
+            name=device_config.get("name", "Sans nom"),
+            manufacturer="RFXCOM",
+            model=protocol,
+        )
         
         entity = RFXCOMSwitch(
             coordinator=coordinator,
@@ -73,6 +88,12 @@ async def async_setup_entry(
             house_code=house_code,
             unit_code=unit_code,
             unique_id=unique_id,
+            device_info=DeviceInfo(
+                identifiers={(DOMAIN, device_identifier)},
+                name=device_config.get("name", "Sans nom"),
+                manufacturer="RFXCOM",
+                model=protocol,
+            ),
         )
         entities.append(entity)
 
@@ -92,11 +113,13 @@ class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
         house_code: str | None = None,
         unit_code: str | None = None,
         unique_id: str | None = None,
+        device_info: DeviceInfo | None = None,
     ) -> None:
         """Initialise l'interrupteur RFXCOM."""
         super().__init__(coordinator)
         self._attr_name = name
         self._attr_unique_id = unique_id
+        self._attr_device_info = device_info
         self._protocol = protocol
         self._device_id = device_id
         self._house_code = house_code

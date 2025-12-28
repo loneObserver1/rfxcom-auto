@@ -136,3 +136,4 @@ Avant de tester dans Home Assistant :
 - [ ] Tester ON/OFF depuis l'interface
 - [ ] Vérifier les logs RFXCOM pour confirmer l'envoi
 
+

@@ -42,3 +42,4 @@ def test_all_constants_defined():
         value = getattr(const_module, const_name)
         assert value is not None, f"Constante {const_name} est None"
 
+

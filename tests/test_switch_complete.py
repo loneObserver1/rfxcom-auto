@@ -171,3 +171,4 @@ class TestSwitchComplete:
         # Test (ne devrait pas lever d'exception)
         assert hasattr(switch, 'async_added_to_hass')
 
+

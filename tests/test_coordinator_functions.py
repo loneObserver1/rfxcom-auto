@@ -110,3 +110,4 @@ def test_arc_command_format():
     assert expected[6] == 0x01  # ON
     assert expected[7] == 0x00  # Signal level
 
+

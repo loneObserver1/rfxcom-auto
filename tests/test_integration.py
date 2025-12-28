@@ -34,3 +34,4 @@ async def test_setup_and_unload(hass: HomeAssistant):
         assert result is True
         assert entry.entry_id not in hass.data[DOMAIN]
 
+

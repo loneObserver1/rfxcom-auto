@@ -137,3 +137,4 @@ class TestRFXCOMOptionsFlowHandler:
         assert result["type"] == FlowResultType.FORM
         assert "errors" in result
 
+

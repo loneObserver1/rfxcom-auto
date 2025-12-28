@@ -130,3 +130,4 @@ class TestInitComplete:
         assert "entry1" not in mock_hass.data[DOMAIN]
         assert "entry2" in mock_hass.data[DOMAIN]  # L'autre entrée doit rester
 
+

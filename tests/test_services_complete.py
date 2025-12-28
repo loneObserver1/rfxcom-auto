@@ -245,3 +245,4 @@ class TestServices:
         devices = mock_config_entry.options.get("devices", [])
         assert len(devices) == 0
 
+

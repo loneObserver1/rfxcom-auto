@@ -51,3 +51,4 @@ def setup_log_handler() -> RFXCOMLogHandler:
     handler.setFormatter(formatter)
     return handler
 
+

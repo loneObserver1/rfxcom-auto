@@ -194,3 +194,4 @@ Tous les éléments critiques sont en place :
 
 **Prochaine étape** : Tests manuels dans Home Assistant avec un vrai équipement RFXCOM.
 
+

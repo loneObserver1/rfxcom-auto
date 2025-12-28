@@ -152,3 +152,4 @@ class TestServices:
             # Ne devrait pas lever d'exception, juste logger une erreur
             await service_func(call)
 
+
