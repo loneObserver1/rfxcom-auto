@@ -447,9 +447,54 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Redirige directement vers l'ajout d'un appareil."""
-        # Rediriger directement vers l'ajout d'un appareil
-        return await self.async_step_add_device()
+        """Menu principal des options."""
+        devices = self.config_entry.options.get("devices", [])
+        
+        if user_input is None:
+            # Construire la liste des options
+            menu_options = {
+                "add": "➕ Ajouter un appareil",
+            }
+            
+            # Ajouter les options pour chaque appareil
+            for idx, device in enumerate(devices):
+                device_name = device.get("name", f"Appareil {idx+1}")
+                menu_options[f"edit_{idx}"] = f"✏️ Modifier: {device_name}"
+                menu_options[f"delete_{idx}"] = f"🗑️ Supprimer: {device_name}"
+            
+            # Ajouter les autres options
+            menu_options["auto_registry"] = "🔍 Auto-registry"
+            menu_options["debug"] = "🐛 Mode debug"
+            menu_options["view_logs"] = "📋 Voir les logs"
+            
+            schema = vol.Schema({
+                vol.Required("action"): vol.In(menu_options),
+            })
+            
+            return self.async_show_form(
+                step_id="init",
+                data_schema=schema,
+            )
+        
+        # Traiter l'action sélectionnée
+        action = user_input.get("action")
+        
+        if action == "add":
+            return await self.async_step_add_device()
+        elif action == "auto_registry":
+            return await self.async_step_auto_registry()
+        elif action == "debug":
+            return await self.async_step_debug()
+        elif action == "view_logs":
+            return await self.async_step_view_logs()
+        elif action.startswith("edit_"):
+            device_idx = int(action.split("_")[1])
+            return await self.async_step_edit_device(device_idx)
+        elif action.startswith("delete_"):
+            device_idx = int(action.split("_")[1])
+            return await self.async_step_delete_device(device_idx)
+        
+        return await self.async_step_init()
 
     async def async_step_auto_registry(
         self, user_input: dict[str, Any] | None = None
@@ -1264,6 +1309,14 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             # Mettre à jour les options (fusionner avec les options existantes)
             options = dict(self.config_entry.options)
             options["devices"] = devices
+            
+            # Mettre à jour l'entrée et recharger
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, options=options
+            )
+            
+            # Recharger l'intégration pour supprimer l'entité
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
             
             return self.async_create_entry(title="", data=options)
 
