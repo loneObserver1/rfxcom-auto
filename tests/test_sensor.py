@@ -29,8 +29,7 @@ sys.modules['homeassistant.helpers.update_coordinator'].CoordinatorEntity = Mock
 sys.modules['homeassistant.components.sensor'].SensorEntity = MockSensorEntity
 
 from custom_components.rfxcom.sensor import (
-    RFXCOMTemperatureSensor,
-    RFXCOMHumiditySensor,
+    RFXCOMTempHumSensor,
     async_setup_entry,
 )
 from custom_components.rfxcom.const import (
@@ -90,7 +89,7 @@ class TestRFXCOMSensors:
 
     def test_temperature_sensor_initialization(self, mock_coordinator):
         """Test d'initialisation du capteur de température."""
-        sensor = RFXCOMTemperatureSensor(
+        sensor = RFXCOMTempHumSensor(
             mock_coordinator,
             "Test Temperature",
             "26627",
@@ -103,7 +102,7 @@ class TestRFXCOMSensors:
 
     def test_humidity_sensor_initialization(self, mock_coordinator):
         """Test d'initialisation du capteur d'humidité."""
-        sensor = RFXCOMHumiditySensor(
+        sensor = RFXCOMTempHumSensor(
             mock_coordinator,
             "Test Humidity",
             "26627",
@@ -116,7 +115,7 @@ class TestRFXCOMSensors:
 
     def test_temperature_sensor_value(self, mock_coordinator):
         """Test de la valeur du capteur de température."""
-        sensor = RFXCOMTemperatureSensor(
+        sensor = RFXCOMTempHumSensor(
             mock_coordinator,
             "Test Temperature",
             "26627",
@@ -129,7 +128,7 @@ class TestRFXCOMSensors:
 
     def test_humidity_sensor_value(self, mock_coordinator):
         """Test de la valeur du capteur d'humidité."""
-        sensor = RFXCOMHumiditySensor(
+        sensor = RFXCOMTempHumSensor(
             mock_coordinator,
             "Test Humidity",
             "26627",
@@ -144,7 +143,7 @@ class TestRFXCOMSensors:
         """Test du capteur de température sans données."""
         mock_coordinator.get_discovered_devices.return_value = {}
         
-        sensor = RFXCOMTemperatureSensor(
+        sensor = RFXCOMTempHumSensor(
             mock_coordinator,
             "Test Temperature",
             "26627",
@@ -159,7 +158,7 @@ class TestRFXCOMSensors:
         """Test du capteur d'humidité sans données."""
         mock_coordinator.get_discovered_devices.return_value = {}
         
-        sensor = RFXCOMHumiditySensor(
+        sensor = RFXCOMTempHumSensor(
             mock_coordinator,
             "Test Humidity",
             "26627",

@@ -71,24 +71,25 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_CONNECTION_TYPE_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_USB): vol.In(
-            [CONNECTION_TYPE_USB, CONNECTION_TYPE_NETWORK]
-        ),
-    }
-)
+# STEP_CONNECTION_TYPE_SCHEMA supprimé - plus de choix de type de connexion, USB par défaut
 
-def _get_available_ports() -> list[str]:
-    """Retourne la liste des ports série disponibles."""
+def _get_available_ports() -> tuple[list[str], str | None]:
+    """Retourne la liste des ports série disponibles et le port RFXCOM détecté.
+    
+    Returns:
+        Tuple (liste des ports, port RFXCOM par défaut ou None)
+    """
     ports = []
+    rfxcom_port = None
     excluded_keywords = ["bluetooth", "debug", "incoming", "jabra", "modem"]
+    rfxcom_keywords = ["rfxcom", "rfxtrx", "rfx", "433mhz"]
 
     try:
         available_ports = serial.tools.list_ports.comports()
         for port in available_ports:
             port_str = port.device
             description_lower = (port.description or "").lower()
+            manufacturer_lower = (port.manufacturer or "").lower()
 
             # Filtrer les ports qui ne sont probablement pas des ports série RFXCOM
             if any(keyword in description_lower for keyword in excluded_keywords):
@@ -104,6 +105,13 @@ def _get_available_ports() -> list[str]:
 
             ports.append(port_str)
             _LOGGER.debug("Port série détecté: %s (%s)", port_str, port.description or "Sans description")
+            
+            # Détecter si c'est un port RFXCOM (priorité)
+            if rfxcom_port is None:
+                if any(keyword in description_lower for keyword in rfxcom_keywords) or \
+                   any(keyword in manufacturer_lower for keyword in rfxcom_keywords):
+                    rfxcom_port = port_str
+                    _LOGGER.info("✅ Port RFXCOM détecté automatiquement: %s (%s)", port_str, port.description or port.manufacturer or "Sans description")
     except Exception as err:
         _LOGGER.warning("Erreur lors de la détection des ports série: %s", err)
 
@@ -133,18 +141,18 @@ def _get_available_ports() -> list[str]:
             if port not in ports:
                 ports.insert(0, port)  # Insérer au début pour qu'ils apparaissent en premier
 
-    # Trier les ports (ports USB en premier)
+    # Trier les ports (port RFXCOM en premier, puis ports USB)
     ports.sort(key=lambda x: (
-        0 if "usb" in x.lower() or "usbmodem" in x.lower() or "usbserial" in x.lower() else 1,
+        0 if x == rfxcom_port else (1 if "usb" in x.lower() or "usbmodem" in x.lower() or "usbserial" in x.lower() else 2),
         x
     ))
 
-    return ports
+    return ports, rfxcom_port
 
 
 def _build_usb_schema() -> vol.Schema:
     """Construit le schéma USB avec les ports disponibles."""
-    available_ports = _get_available_ports()
+    available_ports, rfxcom_port = _get_available_ports()
 
     # Créer les options pour le sélecteur avec descriptions
     port_options = {}
@@ -153,17 +161,22 @@ def _build_usb_schema() -> vol.Schema:
             # Essayer d'obtenir plus d'infos sur le port
             port_info = next((p for p in serial.tools.list_ports.comports() if p.device == port), None)
             if port_info:
-                label = f"{port} - {port_info.description}" if port_info.description else port
+                # Marquer le port RFXCOM détecté
+                if port == rfxcom_port:
+                    label = f"{port} - {port_info.description} (RFXCOM détecté)" if port_info.description else f"{port} (RFXCOM détecté)"
+                else:
+                    label = f"{port} - {port_info.description}" if port_info.description else port
             else:
-                label = port
+                label = f"{port} (RFXCOM détecté)" if port == rfxcom_port else port
             port_options[port] = label
         except Exception:
-            port_options[port] = port
+            port_options[port] = f"{port} (RFXCOM détecté)" if port == rfxcom_port else port
 
     # Ajouter l'option de saisie manuelle
     port_options["manual"] = "✏️ Saisie manuelle..."
 
-    default_port = DEFAULT_PORT if DEFAULT_PORT in available_ports else (available_ports[0] if available_ports else DEFAULT_PORT)
+    # Utiliser le port RFXCOM détecté par défaut, sinon le premier port disponible
+    default_port = rfxcom_port if rfxcom_port else (DEFAULT_PORT if DEFAULT_PORT in available_ports else (available_ports[0] if available_ports else DEFAULT_PORT))
 
     schema_dict = {
         vol.Required(CONF_PORT, default=default_port): vol.In(port_options),
@@ -171,7 +184,7 @@ def _build_usb_schema() -> vol.Schema:
             vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
         ),
         vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
-        vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+        vol.Required(CONF_ENABLED_PROTOCOLS, default=[]): vol.All(
             cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
         ),
     }
@@ -187,7 +200,7 @@ def _build_network_schema() -> vol.Schema:
                 vol.Coerce(int), vol.Range(min=1, max=65535)
             ),
             vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
-            vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+            vol.Required(CONF_ENABLED_PROTOCOLS, default=[]): vol.All(
                 cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
             ),
         }
@@ -196,10 +209,10 @@ def _build_network_schema() -> vol.Schema:
 def _build_device_schema(enabled_protocols: list[str] | None = None, protocol: str | None = None) -> vol.Schema:
     """Construit le schéma pour l'ajout d'appareil avec protocoles activés."""
     if enabled_protocols is None:
-        enabled_protocols = PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]
+        enabled_protocols = []
     
-    # Ajouter "auto" à la liste des protocoles disponibles
-    protocol_options = [PROTOCOL_AUTO] + enabled_protocols
+    # Ne plus inclure PROTOCOL_AUTO
+    protocol_options = enabled_protocols
     
     # Déterminer quels champs afficher selon le protocole
     lighting1_protocols = [
@@ -255,58 +268,8 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Rediriger vers le flow d'options via le flow manager
             return self.async_abort(reason="single_instance_allowed")
         
-        if user_input is None:
-            # Détecter automatiquement les ports USB disponibles
-            try:
-                available_ports = await self.hass.async_add_executor_job(
-                    serial.tools.list_ports.comports
-                )
-
-                # Filtrer pour ne garder que les ports USB réels détectés
-                real_usb_ports = []
-                excluded_keywords = ["bluetooth", "debug", "incoming", "jabra", "modem"]
-
-                for port in available_ports:
-                    port_str = port.device
-                    description_lower = (port.description or "").lower()
-
-                    # Exclure les ports non-RFXCOM
-                    if any(keyword in description_lower for keyword in excluded_keywords):
-                        continue
-
-                    # Vérifier si c'est un port USB réel (pas un port par défaut)
-                    is_usb = any(keyword in port_str.lower() for keyword in [
-                        "usb", "usbmodem", "usbserial", "ttyusb", "ttyacm"
-                    ])
-
-                    # Sur macOS, préférer tty.* mais garder cu.usbserial
-                    if port_str.startswith("/dev/cu.") and not port_str.startswith("/dev/cu.usbserial"):
-                        tty_equivalent = port_str.replace("/dev/cu.", "/dev/tty.")
-                        if tty_equivalent not in [p.device for p in available_ports]:
-                            continue
-
-                    if is_usb:
-                        real_usb_ports.append(port_str)
-                        _LOGGER.debug("Port USB détecté: %s (%s)", port_str, port.description or "Sans description")
-
-                # Si des ports USB sont détectés, afficher directement le formulaire USB
-                if real_usb_ports:
-                    _LOGGER.info("Ports USB détectés: %s, affichage direct du formulaire USB", real_usb_ports)
-                    return await self.async_step_usb()
-            except Exception as err:
-                _LOGGER.warning("Erreur lors de la détection des ports USB: %s", err)
-
-            # Sinon, afficher le menu de sélection
-            return self.async_show_form(
-                step_id="user", data_schema=STEP_CONNECTION_TYPE_SCHEMA
-            )
-
-        connection_type = user_input.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_USB)
-
-        if connection_type == CONNECTION_TYPE_USB:
-            return await self.async_step_usb()
-        else:
-            return await self.async_step_network()
+        # Toujours utiliser USB, pas de choix de type de connexion
+        return await self.async_step_usb()
 
     async def async_step_usb(
         self, user_input: dict[str, Any] | None = None
@@ -334,7 +297,7 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = {k: v for k, v in user_input.items() if k not in [CONF_AUTO_REGISTRY, CONF_ENABLED_PROTOCOLS]}
             options = {
                 CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY),
-                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
+                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, []),
             }
             return self.async_create_entry(
                 title=f"RFXCOM USB ({port})", data=data, options=options
@@ -356,7 +319,7 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
                 ),
                 vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
-                vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+                vol.Required(CONF_ENABLED_PROTOCOLS, default=[]): vol.All(
                     cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
                 ),
             })
@@ -374,10 +337,10 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = {k: v for k, v in user_input.items() if k not in [CONF_AUTO_REGISTRY, CONF_ENABLED_PROTOCOLS]}
             options = {
                 CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY),
-                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
+                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, []),
             }
             return self.async_create_entry(
-                title=f"RFXCOM USB ({user_input[CONF_PORT]})", data=data, options=options
+                title=f"RFXCOM ({user_input[CONF_PORT]})", data=data, options=options
             )
 
         schema = vol.Schema({
@@ -386,7 +349,7 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Coerce(int), vol.In([9600, 19200, 38400, 57600, 115200])
             ),
             vol.Optional(CONF_AUTO_REGISTRY, default=DEFAULT_AUTO_REGISTRY): bool,
-            vol.Required(CONF_ENABLED_PROTOCOLS, default=PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]): vol.All(
+            vol.Required(CONF_ENABLED_PROTOCOLS, default=[]): vol.All(
                 cv.multi_select({p: p for p in PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]})
             ),
         })
@@ -414,7 +377,7 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = {k: v for k, v in user_input.items() if k not in [CONF_AUTO_REGISTRY, CONF_ENABLED_PROTOCOLS]}
             options = {
                 CONF_AUTO_REGISTRY: user_input.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY),
-                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]),
+                CONF_ENABLED_PROTOCOLS: user_input.get(CONF_ENABLED_PROTOCOLS, []),
             }
             return self.async_create_entry(
                 title=f"RFXCOM Network ({user_input[CONF_HOST]}:{user_input[CONF_NETWORK_PORT]})",
@@ -443,6 +406,39 @@ class RFXCOMConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
     """Gère le flux d'options pour RFXCOM."""
+    
+    def __getattr__(self, name: str):
+        """Intercepte les appels dynamiques à async_step_edit_device_* et async_step_delete_device_*."""
+        if name.startswith("async_step_edit_device_"):
+            # Extraire l'index depuis le nom de la méthode
+            # Format: async_step_edit_device_0, async_step_edit_device_1, etc.
+            try:
+                idx_str = name.replace("async_step_edit_device_", "")
+                device_idx = int(idx_str)
+                # Retourner une méthode qui appelle async_step_edit_device
+                async def edit_wrapper(user_input=None):
+                    return await self.async_step_edit_device(device_idx, user_input)
+                return edit_wrapper
+            except (ValueError, AttributeError):
+                raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        elif name.startswith("async_step_delete_device_"):
+            # Extraire l'index depuis le nom de la méthode
+            # Format: async_step_delete_device_0, async_step_delete_device_1, etc.
+            try:
+                idx_str = name.replace("async_step_delete_device_", "")
+                device_idx = int(idx_str)
+                # Retourner une méthode qui appelle async_step_delete_device
+                # Home Assistant appelle la méthode avec user_input comme premier argument
+                async def delete_wrapper(user_input=None):
+                    # Vérifier que user_input n'est pas l'index (au cas où)
+                    if isinstance(user_input, int):
+                        # Si c'est un int, c'est probablement device_idx qui a été passé par erreur
+                        return await self.async_step_delete_device(user_input, None)
+                    return await self.async_step_delete_device(device_idx, user_input)
+                return delete_wrapper
+            except (ValueError, AttributeError):
+                raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -450,51 +446,27 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         """Menu principal des options."""
         devices = self.config_entry.options.get("devices", [])
         
-        if user_input is None:
-            # Construire la liste des options
-            menu_options = {
-                "add": "➕ Ajouter un appareil",
-            }
-            
-            # Ajouter les options pour chaque appareil
-            for idx, device in enumerate(devices):
-                device_name = device.get("name", f"Appareil {idx+1}")
-                menu_options[f"edit_{idx}"] = f"✏️ Modifier: {device_name}"
-                menu_options[f"delete_{idx}"] = f"🗑️ Supprimer: {device_name}"
-            
-            # Ajouter les autres options
-            menu_options["auto_registry"] = "🔍 Auto-registry"
-            menu_options["debug"] = "🐛 Mode debug"
-            menu_options["view_logs"] = "📋 Voir les logs"
-            
-            schema = vol.Schema({
-                vol.Required("action"): vol.In(menu_options),
-            })
-            
-            return self.async_show_form(
-                step_id="init",
-                data_schema=schema,
-            )
+        # Construire la liste des options
+        menu_options = {
+            "add": "➕ Ajouter un appareil",
+        }
         
-        # Traiter l'action sélectionnée
-        action = user_input.get("action")
+        # Ajouter les options pour chaque appareil
+        for idx, device in enumerate(devices):
+            device_name = device.get("name", f"Appareil {idx+1}")
+            menu_options[f"edit_device_{idx}"] = f"✏️ Modifier: {device_name}"
+            menu_options[f"delete_device_{idx}"] = f"🗑️ Supprimer: {device_name}"
         
-        if action == "add":
-            return await self.async_step_add_device()
-        elif action == "auto_registry":
-            return await self.async_step_auto_registry()
-        elif action == "debug":
-            return await self.async_step_debug()
-        elif action == "view_logs":
-            return await self.async_step_view_logs()
-        elif action.startswith("edit_"):
-            device_idx = int(action.split("_")[1])
-            return await self.async_step_edit_device(device_idx)
-        elif action.startswith("delete_"):
-            device_idx = int(action.split("_")[1])
-            return await self.async_step_delete_device(device_idx)
+        # Ajouter les autres options
+        menu_options["auto_registry"] = "🔍 Auto-registry"
         
-        return await self.async_step_init()
+        # async_show_menu() appelle directement async_step_{next_step_id}
+        # Les clés du dictionnaire menu_options deviennent les next_step_id
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=menu_options,
+        )
+    
 
     async def async_step_auto_registry(
         self, user_input: dict[str, Any] | None = None
@@ -621,7 +593,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         
         return await self.async_step_init()
 
-    async def async_step_add_device(
+    async def async_step_add(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Ajoute un nouvel appareil - Choix du mode."""
@@ -634,7 +606,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 }),
             })
             return self.async_show_form(
-                step_id="add_device",
+                step_id="add",
                 data_schema=schema,
                 description_placeholders={
                     "instructions": (
@@ -661,7 +633,7 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         # Récupérer les protocoles activés depuis les options
         enabled_protocols = self.config_entry.options.get(
             CONF_ENABLED_PROTOCOLS,
-            PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]
+            []
         )
         
         # Protocoles Lighting1 (house_code + unit_code requis)
@@ -687,12 +659,16 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         
         if user_input is None:
             # Étape 1: Sélectionner le protocole, le nom et le type d'appareil
-            protocol_options = [PROTOCOL_AUTO] + enabled_protocols
-            schema = vol.Schema({
+            protocol_options = enabled_protocols
+            # Pour TEMP_HUM, le device_type est automatiquement "sensor", donc on ne le demande pas
+            schema_dict = {
                 vol.Required("name"): str,
                 vol.Required(CONF_PROTOCOL): vol.In(protocol_options),
-                vol.Optional("device_type", default="switch"): vol.In(["switch", "cover"]),
-            })
+            }
+            # Ne proposer device_type que si le protocole n'est pas TEMP_HUM
+            # (on ne sait pas encore le protocole à ce stade, donc on le propose toujours)
+            schema_dict[vol.Optional("device_type", default="switch")] = vol.In(["switch", "cover"])
+            schema = vol.Schema(schema_dict)
             return self.async_show_form(
                 step_id="add_device_manual", data_schema=schema
             )
@@ -702,8 +678,12 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         # Validation selon le protocole
         protocol = user_input[CONF_PROTOCOL]
         
+        # Pour TEMP_HUM, le device_type est automatiquement "sensor" (pas besoin d'appairage)
+        if protocol == PROTOCOL_TEMP_HUM:
+            user_input["device_type"] = DEVICE_TYPE_SENSOR
+        
         # Si le protocole est sélectionné mais pas les champs spécifiques, passer à l'étape 2
-        if protocol and protocol != PROTOCOL_AUTO:
+        if protocol:
             if protocol in lighting1_protocols:
                 # Lighting1: besoin de house_code et unit_code
                 if not user_input.get(CONF_HOUSE_CODE) or not user_input.get(CONF_UNIT_CODE):
@@ -741,40 +721,6 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                         step_id="add_device_manual", data_schema=schema
                     )
         
-        # Si "auto" est sélectionné, vérifier que l'auto-registry est activée
-        if protocol == PROTOCOL_AUTO:
-            auto_registry = self.config_entry.options.get(CONF_AUTO_REGISTRY, DEFAULT_AUTO_REGISTRY)
-            if not auto_registry:
-                errors["base"] = "auto_protocol_requires_auto_registry"
-                schema = _build_device_schema(enabled_protocols)
-                return self.async_show_form(
-                    step_id="add_device_manual", data_schema=schema, errors=errors
-                )
-            # Pour "auto", on crée un appareil avec protocol="auto"
-            # L'appareil sera configuré automatiquement lors de la première détection
-            device_type = user_input.get("device_type", DEVICE_TYPE_SWITCH)
-            device_config = {
-                "name": user_input["name"],
-                CONF_PROTOCOL: PROTOCOL_AUTO,
-                "auto_detect": True,
-                "device_type": device_type,
-            }
-            devices = self.config_entry.options.get("devices", [])
-            devices.append(device_config)
-            
-            # Mettre à jour les options (fusionner avec les options existantes)
-            options = dict(self.config_entry.options)
-            options["devices"] = devices
-            
-            # Mettre à jour l'entrée et recharger
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, options=options
-            )
-            
-            # Recharger l'intégration pour créer la nouvelle entité
-            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            
-            return self.async_create_entry(title="", data=options)
 
         # Validation supplémentaire (déjà fait plus haut pour Lighting1)
         if protocol in lighting2_protocols + lighting3_protocols + lighting4_protocols + lighting5_protocols + lighting6_protocols:
@@ -801,6 +747,12 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 "name": user_input["name"],
                 CONF_PROTOCOL: protocol,
             }
+            
+            # Sauvegarder le device_type (switch par défaut, sauf pour TEMP_HUM)
+            if protocol == PROTOCOL_TEMP_HUM:
+                device_config["device_type"] = DEVICE_TYPE_SENSOR
+            else:
+                device_config["device_type"] = user_input.get("device_type", DEVICE_TYPE_SWITCH)
 
             # Configurer selon le type de protocole
             if protocol in lighting1_protocols:
@@ -818,7 +770,19 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 device_config["sensor_data"] = {}
 
             # Ajouter le nouvel appareil
+            _LOGGER.info(
+                "Ajout d'un nouvel appareil: name=%s, protocol=%s, device_type=%s, device_id=%s, house_code=%s, unit_code=%s",
+                device_config.get("name"),
+                device_config.get(CONF_PROTOCOL),
+                device_config.get("device_type"),
+                device_config.get(CONF_DEVICE_ID),
+                device_config.get(CONF_HOUSE_CODE),
+                device_config.get(CONF_UNIT_CODE),
+            )
             devices.append(device_config)
+            _LOGGER.info("Liste des appareils après ajout (%d appareils):", len(devices))
+            for idx, dev in enumerate(devices):
+                _LOGGER.info("  [%d] %s (protocol=%s, device_type=%s)", idx, dev.get("name"), dev.get(CONF_PROTOCOL), dev.get("device_type"))
 
             # Mettre à jour les options (fusionner avec les options existantes)
             options = dict(self.config_entry.options)
@@ -848,11 +812,12 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         # Récupérer les protocoles activés depuis les options
         enabled_protocols = self.config_entry.options.get(
             CONF_ENABLED_PROTOCOLS,
-            PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]
+            []
         )
         
         if user_input is None:
-            protocol_options = [p for p in enabled_protocols if p != PROTOCOL_AUTO]
+            # Exclure TEMP_HUM de l'appairage automatique car les sondes envoient déjà leurs données
+            protocol_options = [p for p in enabled_protocols if p != PROTOCOL_AUTO and p != PROTOCOL_TEMP_HUM]
             schema = vol.Schema({
                 vol.Required("name"): str,
                 vol.Required(CONF_PROTOCOL): vol.In(protocol_options),
@@ -888,6 +853,9 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         
         if protocol in lighting1_protocols:
             return await self.async_step_pair_device_codes()
+        elif protocol == PROTOCOL_AC:
+            # Pour AC, utiliser le nouveau processus d'appairage amélioré
+            return await self.async_step_pair_device_ac_listen()
         else:
             return await self.async_step_pair_device_id()
     
@@ -967,10 +935,340 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         # Passer directement à l'étape suivante (pas besoin de formulaire)
         return await self.async_step_pair_device_ready()
     
+    async def async_step_pair_device_ac_listen(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Appairage AC - Étape 1: Écouter une action pour récupérer l'ID."""
+        from .coordinator import RFXCOMCoordinator
+        from . import DOMAIN as RFXCOM_DOMAIN
+        import asyncio
+        
+        if not hasattr(self, '_pairing_data'):
+            return await self.async_step_pair_device()
+        
+        protocol = self._pairing_data["protocol"]
+        name = self._pairing_data["name"]
+        
+        if user_input is None:
+            # Activer temporairement l'auto-registry pour écouter
+            coordinator: RFXCOMCoordinator = self.hass.data[RFXCOM_DOMAIN][self.config_entry.entry_id]
+            original_auto_registry = coordinator.auto_registry
+            coordinator.auto_registry = True  # Activer pour écouter
+            
+            schema = vol.Schema({
+                vol.Required("ready_to_listen", default=False): bool,
+            })
+            return self.async_show_form(
+                step_id="pair_device_ac_listen",
+                data_schema=schema,
+                description_placeholders={
+                    "instructions": (
+                        f"**Protocole** : {protocol}\n"
+                        f"**Nom** : {name}\n\n"
+                        "**Étape 1 - Détection de l'appareil** :\n"
+                        "1. Utilisez votre télécommande ou appuyez sur le bouton de la prise DIO\n"
+                        "2. Envoyez une commande ON ou OFF\n"
+                        "3. Le système va écouter et détecter automatiquement l'ID de l'appareil\n"
+                        "4. Cochez la case ci-dessous quand vous êtes prêt à envoyer la commande\n\n"
+                        "⏱️ Vous avez 30 secondes après avoir coché la case pour envoyer la commande."
+                    ),
+                },
+            )
+        
+        if not user_input.get("ready_to_listen"):
+            schema = vol.Schema({
+                vol.Required("ready_to_listen", default=False): bool,
+            })
+            return self.async_show_form(
+                step_id="pair_device_ac_listen",
+                data_schema=schema,
+                errors={"base": "not_ready"},
+                description_placeholders={
+                    "instructions": "Veuillez cocher la case pour commencer l'écoute.",
+                },
+            )
+        
+        # Écouter les paquets AC pendant 30 secondes
+        coordinator: RFXCOMCoordinator = self.hass.data[RFXCOM_DOMAIN][self.config_entry.entry_id]
+        original_auto_registry = coordinator.auto_registry
+        coordinator.auto_registry = True  # Activer pour écouter
+        
+        _LOGGER.info("🔍 Écoute des paquets AC pendant 30 secondes...")
+        _LOGGER.info("💡 Envoyez une commande ON ou OFF depuis votre télécommande ou appuyez sur le bouton de la prise")
+        
+        detected_device = None
+        start_time = asyncio.get_event_loop().time()
+        listen_timeout = 30.0  # 30 secondes
+        
+        while (asyncio.get_event_loop().time() - start_time) < listen_timeout:
+            await asyncio.sleep(0.5)  # Vérifier toutes les 0.5 secondes
+            
+            # Vérifier si un paquet AC a été reçu
+            for unique_id, device_info in coordinator._discovered_devices.items():
+                if device_info.get(CONF_PROTOCOL) == PROTOCOL_AC:
+                    detected_device = device_info
+                    _LOGGER.info("✅ Appareil AC détecté : device_id=%s, unit_code=%s", 
+                                device_info.get(CONF_DEVICE_ID), 
+                                device_info.get(CONF_UNIT_CODE))
+                    break
+            
+            if detected_device:
+                break
+        
+        # Restaurer l'auto-registry
+        coordinator.auto_registry = original_auto_registry
+        
+        if not detected_device:
+            schema = vol.Schema({
+                vol.Required("ready_to_listen", default=False): bool,
+            })
+            return self.async_show_form(
+                step_id="pair_device_ac_listen",
+                data_schema=schema,
+                errors={"base": "no_device_detected"},
+                description_placeholders={
+                    "instructions": (
+                        "❌ Aucun appareil AC détecté.\n\n"
+                        "Vérifiez que :\n"
+                        "- Vous avez bien envoyé une commande ON ou OFF\n"
+                        "- La prise est bien branchée et fonctionne\n"
+                        "- Le RFXCOM reçoit bien les signaux\n\n"
+                        "Réessayez en cochant la case ci-dessous."
+                    ),
+                },
+            )
+        
+        # Stocker les informations détectées
+        self._pairing_data["device_id"] = detected_device.get(CONF_DEVICE_ID)
+        self._pairing_data["unit_code"] = detected_device.get(CONF_UNIT_CODE, "1")
+        
+        _LOGGER.info("✅ ID détecté : device_id=%s, unit_code=%s", 
+                    self._pairing_data["device_id"], 
+                    self._pairing_data["unit_code"])
+        
+        # Passer à l'étape d'appairage
+        return await self.async_step_pair_device_ac_pairing()
+    
+    async def async_step_pair_device_ac_pairing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Appairage AC - Étape 2: Mise en mode appairage et envoi des commandes."""
+        from .coordinator import RFXCOMCoordinator
+        from . import DOMAIN as RFXCOM_DOMAIN
+        import asyncio
+        
+        if not hasattr(self, '_pairing_data'):
+            return await self.async_step_pair_device()
+        
+        protocol = self._pairing_data["protocol"]
+        name = self._pairing_data["name"]
+        device_id = self._pairing_data.get("device_id")
+        unit_code = self._pairing_data.get("unit_code", "1")
+        
+        if user_input is None:
+            schema = vol.Schema({
+                vol.Required("ready_to_pair", default=False): bool,
+            })
+            return self.async_show_form(
+                step_id="pair_device_ac_pairing",
+                data_schema=schema,
+                description_placeholders={
+                    "instructions": (
+                        f"**Protocole** : {protocol}\n"
+                        f"**Nom** : {name}\n"
+                        f"**Device ID détecté** : {device_id}\n"
+                        f"**Unit Code détecté** : {unit_code}\n\n"
+                        "**Étape 2 - Appairage** :\n"
+                        "1. Mettez la prise DIO en mode appairage (suivez les instructions du fabricant)\n"
+                        "   - Généralement : maintenez le bouton appuyé pendant 3-5 secondes\n"
+                        "   - La LED doit clignoter pour indiquer le mode appairage\n"
+                        "2. Cochez la case ci-dessous quand la prise est en mode appairage\n"
+                        "3. Le système va envoyer des commandes d'appairage pendant 4 secondes\n\n"
+                        "⏱️ Vous avez 4 secondes de fenêtre d'appairage !"
+                    ),
+                },
+            )
+        
+        if not user_input.get("ready_to_pair"):
+            schema = vol.Schema({
+                vol.Required("ready_to_pair", default=False): bool,
+            })
+            return self.async_show_form(
+                step_id="pair_device_ac_pairing",
+                data_schema=schema,
+                errors={"base": "not_ready"},
+                description_placeholders={
+                    "instructions": "Veuillez mettre la prise en mode appairage et cocher la case.",
+                },
+            )
+        
+        # Récupérer le coordinateur
+        coordinator: RFXCOMCoordinator = self.hass.data[RFXCOM_DOMAIN][self.config_entry.entry_id]
+        
+        # Envoyer des commandes d'appairage (ON répétées) pendant 4 secondes
+        _LOGGER.info("📤 Envoi des commandes d'appairage pour device_id=%s, unit_code=%s...", device_id, unit_code)
+        
+        pair_start_time = asyncio.get_event_loop().time()
+        pair_duration = 4.0  # 4 secondes
+        send_count = 0
+        
+        while (asyncio.get_event_loop().time() - pair_start_time) < pair_duration:
+            success = await coordinator.send_command(
+                protocol=PROTOCOL_AC,
+                device_id=device_id,
+                command=CMD_ON,
+                unit_code=unit_code,
+            )
+            if success:
+                send_count += 1
+            await asyncio.sleep(0.05)  # ~20 envois par seconde
+        
+        _LOGGER.info("✅ %d commandes d'appairage envoyées", send_count)
+        
+        # Attendre un peu pour que l'appairage se stabilise
+        await asyncio.sleep(1)
+        
+        # Passer à l'étape de test
+        return await self.async_step_pair_device_ac_test()
+    
+    async def async_step_pair_device_ac_test(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Appairage AC - Étape 3: Test ON/OFF pour vérifier l'appairage."""
+        from .coordinator import RFXCOMCoordinator
+        from . import DOMAIN as RFXCOM_DOMAIN
+        import asyncio
+        
+        if not hasattr(self, '_pairing_data'):
+            return await self.async_step_pair_device()
+        
+        protocol = self._pairing_data["protocol"]
+        name = self._pairing_data["name"]
+        device_id = self._pairing_data.get("device_id")
+        unit_code = self._pairing_data.get("unit_code", "1")
+        
+        if user_input is None:
+            schema = vol.Schema({
+                vol.Required("test_result"): vol.In(["success", "failed", "skip"]),
+            })
+            return self.async_show_form(
+                step_id="pair_device_ac_test",
+                data_schema=schema,
+                description_placeholders={
+                    "instructions": (
+                        f"**Protocole** : {protocol}\n"
+                        f"**Nom** : {name}\n"
+                        f"**Device ID** : {device_id}\n"
+                        f"**Unit Code** : {unit_code}\n\n"
+                        "**Étape 3 - Test de l'appairage** :\n"
+                        "Le système va envoyer une séquence de tests :\n"
+                        "1. Commande OFF (la prise doit s'éteindre)\n"
+                        "2. Attente 2 secondes\n"
+                        "3. Commande ON (la prise doit s'allumer)\n"
+                        "4. Attente 2 secondes\n"
+                        "5. Commande OFF (la prise doit s'éteindre)\n\n"
+                        "Observez la prise et indiquez le résultat :"
+                    ),
+                },
+            )
+        
+        # Récupérer le coordinateur
+        coordinator: RFXCOMCoordinator = self.hass.data[RFXCOM_DOMAIN][self.config_entry.entry_id]
+        
+        if user_input.get("test_result") == "skip":
+            _LOGGER.info("⏭️ Test ignoré par l'utilisateur")
+        else:
+            # Envoyer la séquence de test
+            _LOGGER.info("🧪 Démarrage du test ON/OFF...")
+            
+            # OFF
+            _LOGGER.info("📤 Test 1/3 : Envoi OFF...")
+            await coordinator.send_command(
+                protocol=PROTOCOL_AC,
+                device_id=device_id,
+                command=CMD_OFF,
+                unit_code=unit_code,
+            )
+            await asyncio.sleep(2)
+            
+            # ON
+            _LOGGER.info("📤 Test 2/3 : Envoi ON...")
+            await coordinator.send_command(
+                protocol=PROTOCOL_AC,
+                device_id=device_id,
+                command=CMD_ON,
+                unit_code=unit_code,
+            )
+            await asyncio.sleep(2)
+            
+            # OFF
+            _LOGGER.info("📤 Test 3/3 : Envoi OFF...")
+            await coordinator.send_command(
+                protocol=PROTOCOL_AC,
+                device_id=device_id,
+                command=CMD_OFF,
+                unit_code=unit_code,
+            )
+            
+            _LOGGER.info("✅ Séquence de test terminée")
+        
+        if user_input.get("test_result") == "failed":
+            # L'appairage a échoué, proposer de réessayer
+            schema = vol.Schema({
+                vol.Required("retry", default=False): bool,
+            })
+            return self.async_show_form(
+                step_id="pair_device_ac_test",
+                data_schema=schema,
+                errors={"base": "test_failed"},
+                description_placeholders={
+                    "instructions": (
+                        "❌ Le test a échoué. La prise ne répond pas aux commandes.\n\n"
+                        "Vérifiez que :\n"
+                        "- La prise est bien en mode appairage\n"
+                        "- Le Device ID et Unit Code sont corrects\n"
+                        "- La prise est bien branchée et fonctionne\n\n"
+                        "Souhaitez-vous réessayer l'appairage ?"
+                    ),
+                },
+            )
+        
+        # Appairage réussi, créer la configuration
+        devices = self.config_entry.options.get("devices", [])
+        device_type = self._pairing_data.get("device_type", DEVICE_TYPE_SWITCH)
+        device_config = {
+            "name": name,
+            CONF_PROTOCOL: protocol,
+            "device_type": device_type,
+            CONF_DEVICE_ID: device_id,
+            CONF_UNIT_CODE: unit_code,
+        }
+        
+        devices.append(device_config)
+        
+        # Mettre à jour les options
+        options = dict(self.config_entry.options)
+        options["devices"] = devices
+        
+        # Mettre à jour l'entrée et recharger
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, options=options
+        )
+        
+        # Recharger l'intégration pour créer la nouvelle entité
+        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+        
+        _LOGGER.info(
+            "✅ Appareil AC appairé avec succès : %s (device_id=%s, unit_code=%s)",
+            name, device_id, unit_code
+        )
+        
+        return self.async_create_entry(title="", data=options)
+    
     async def async_step_pair_device_id(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Appairage automatique - Étape 2: ID pour Lighting2-6."""
+        """Appairage automatique - Étape 2: ID pour Lighting2-6 (sauf AC)."""
         if not hasattr(self, '_pairing_data'):
             return await self.async_step_pair_device()
         
@@ -1210,11 +1508,18 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
     async def async_step_edit_device(
-        self, device_idx: int, user_input: dict[str, Any] | None = None
+        self, device_idx: int | dict[str, Any] | None = None, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Modifie un appareil existant."""
+        # Gérer le cas où device_idx est passé comme user_input (appel direct depuis Home Assistant)
+        if isinstance(device_idx, dict):
+            # Si device_idx est un dict, c'est en fait user_input qui a été passé
+            # Cela signifie que device_idx n'a pas été fourni, on doit l'extraire d'ailleurs
+            # Ce cas ne devrait pas arriver avec __getattr__, mais on le gère pour sécurité
+            return await self.async_step_init()
+        
         devices = self.config_entry.options.get("devices", [])
-        if device_idx >= len(devices):
+        if not isinstance(device_idx, int) or device_idx >= len(devices):
             return await self.async_step_init()
 
         device = devices[device_idx]
@@ -1222,27 +1527,49 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
         # Récupérer les protocoles activés depuis les options
         enabled_protocols = self.config_entry.options.get(
             CONF_ENABLED_PROTOCOLS,
-            PROTOCOLS_SWITCH + [PROTOCOL_TEMP_HUM]
+            []
         )
         
         if user_input is None:
             # Pré-remplir le formulaire avec les valeurs existantes
-            protocol_options = [PROTOCOL_AUTO] + enabled_protocols
-            schema = vol.Schema({
+            protocol_options = enabled_protocols
+            current_device_type = device.get("device_type", DEVICE_TYPE_SWITCH)
+            schema_dict = {
                 vol.Required("name", default=device.get("name")): str,
                 vol.Required(CONF_PROTOCOL, default=device.get(CONF_PROTOCOL)): vol.In(protocol_options),
-                vol.Optional(CONF_DEVICE_ID, default=device.get(CONF_DEVICE_ID, "")): str,
-                vol.Optional(CONF_HOUSE_CODE, default=device.get(CONF_HOUSE_CODE, "")): str,
-                vol.Optional(CONF_UNIT_CODE, default=device.get(CONF_UNIT_CODE, "")): str,
-            })
+            }
+            # Ajouter device_type seulement si ce n'est pas TEMP_HUM
+            if device.get(CONF_PROTOCOL) != PROTOCOL_TEMP_HUM:
+                schema_dict[vol.Optional("device_type", default=current_device_type)] = vol.In(["switch", "cover"])
+            schema_dict[vol.Optional(CONF_DEVICE_ID, default=device.get(CONF_DEVICE_ID, ""))] = str
+            schema_dict[vol.Optional(CONF_HOUSE_CODE, default=device.get(CONF_HOUSE_CODE, ""))] = str
+            schema_dict[vol.Optional(CONF_UNIT_CODE, default=device.get(CONF_UNIT_CODE, ""))] = str
+            schema = vol.Schema(schema_dict)
             return self.async_show_form(
                 step_id="edit_device", data_schema=schema
             )
 
         # Mettre à jour l'appareil
         protocol = user_input[CONF_PROTOCOL]
+        old_name = device.get("name")
         device["name"] = user_input["name"]
         device[CONF_PROTOCOL] = protocol
+        
+        # Sauvegarder le device_type si fourni (sauf pour TEMP_HUM qui est toujours sensor)
+        if protocol != PROTOCOL_TEMP_HUM:
+            device_type = user_input.get("device_type", device.get("device_type", DEVICE_TYPE_SWITCH))
+            device["device_type"] = device_type
+        else:
+            device["device_type"] = DEVICE_TYPE_SENSOR
+        
+        _LOGGER.info(
+            "Modification de l'appareil [%d]: ancien nom=%s, nouveau nom=%s, protocol=%s, device_type=%s",
+            device_idx,
+            old_name,
+            device["name"],
+            protocol,
+            device.get("device_type"),
+        )
 
         # Définir les listes de protocoles (réutiliser celles de add_device)
         lighting1_protocols = [
@@ -1277,19 +1604,67 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
                 device["sensor_data"] = {}
 
         devices[device_idx] = device
+        
+        _LOGGER.info("Liste des appareils après modification (%d appareils):", len(devices))
+        for idx, dev in enumerate(devices):
+            _LOGGER.info("  [%d] %s (protocol=%s, device_type=%s)", idx, dev.get("name"), dev.get(CONF_PROTOCOL), dev.get("device_type"))
 
         # Mettre à jour les options (fusionner avec les options existantes)
         options = dict(self.config_entry.options)
         options["devices"] = devices
         
+        # Mettre à jour l'entrée d'abord pour sauvegarder les options
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, options=options
+        )
+        
+        # Mettre à jour le device registry avec le nouveau nom
+        from homeassistant.helpers import device_registry as dr
+        device_registry = dr.async_get(self.hass)
+        
+        # Construire le device_identifier comme dans switch.py
+        protocol = device.get(CONF_PROTOCOL, "")
+        device_id = device.get(CONF_DEVICE_ID)
+        house_code = device.get(CONF_HOUSE_CODE)
+        unit_code = device.get(CONF_UNIT_CODE)
+        
+        if device_id:
+            device_identifier = f"{protocol}_{device_id}_{device_idx}"
+        elif house_code and unit_code:
+            device_identifier = f"{protocol}_{house_code}_{unit_code}_{device_idx}"
+        else:
+            name_slug = device.get("name", "unknown").lower().replace(" ", "_")
+            device_identifier = f"{protocol}_{name_slug}_{device_idx}"
+        
+        # Mettre à jour le device dans le device registry
+        device_entry = device_registry.async_get_device(
+            identifiers={(DOMAIN, device_identifier)}
+        )
+        if device_entry:
+            device_registry.async_update_device(
+                device_entry.id,
+                name=device.get("name", "Sans nom"),
+            )
+            _LOGGER.debug("Device registry mis à jour pour: %s", device.get("name"))
+        
+        # Recharger l'intégration pour mettre à jour les entités
+        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+        
         return self.async_create_entry(title="", data=options)
 
     async def async_step_delete_device(
-        self, device_idx: int, user_input: dict[str, Any] | None = None
+        self, device_idx: int | dict[str, Any] | None = None, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Supprime un appareil."""
+        # Gérer le cas où device_idx est passé comme user_input (appel direct depuis Home Assistant)
+        if isinstance(device_idx, dict):
+            # Si device_idx est un dict, c'est en fait user_input qui a été passé
+            # Cela signifie que device_idx n'a pas été fourni, on doit l'extraire d'ailleurs
+            # Ce cas ne devrait pas arriver avec __getattr__, mais on le gère pour sécurité
+            return await self.async_step_init()
+        
         devices = self.config_entry.options.get("devices", [])
-        if device_idx >= len(devices):
+        if not isinstance(device_idx, int) or device_idx >= len(devices):
             return await self.async_step_init()
 
         device_name = devices[device_idx].get("name", f"Appareil {device_idx+1}")
@@ -1304,16 +1679,43 @@ class RFXCOMOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
         if user_input.get("confirm"):
+            device_to_delete = devices[device_idx]
             devices.pop(device_idx)
             
             # Mettre à jour les options (fusionner avec les options existantes)
             options = dict(self.config_entry.options)
             options["devices"] = devices
             
-            # Mettre à jour l'entrée et recharger
+            # Mettre à jour l'entrée d'abord pour sauvegarder les options
             self.hass.config_entries.async_update_entry(
                 self.config_entry, options=options
             )
+            
+            # Supprimer le device du device registry
+            from homeassistant.helpers import device_registry as dr
+            device_registry = dr.async_get(self.hass)
+            
+            # Construire le device_identifier comme dans switch.py
+            protocol = device_to_delete.get(CONF_PROTOCOL, "")
+            device_id = device_to_delete.get(CONF_DEVICE_ID)
+            house_code = device_to_delete.get(CONF_HOUSE_CODE)
+            unit_code = device_to_delete.get(CONF_UNIT_CODE)
+            
+            if device_id:
+                device_identifier = f"{protocol}_{device_id}_{device_idx}"
+            elif house_code and unit_code:
+                device_identifier = f"{protocol}_{house_code}_{unit_code}_{device_idx}"
+            else:
+                name_slug = device_to_delete.get("name", "unknown").lower().replace(" ", "_")
+                device_identifier = f"{protocol}_{name_slug}_{device_idx}"
+            
+            # Supprimer le device du device registry (cela supprimera aussi les entités associées)
+            device_entry = device_registry.async_get_device(
+                identifiers={(DOMAIN, device_identifier)}
+            )
+            if device_entry:
+                device_registry.async_remove_device(device_entry.id)
+                _LOGGER.debug("Device supprimé du device registry: %s", device_identifier)
             
             # Recharger l'intégration pour supprimer l'entité
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)

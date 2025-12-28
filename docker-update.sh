@@ -18,15 +18,19 @@ if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/
     exit 1
 fi
 
+# Détecter le nom du service depuis docker-compose.yml
+SERVICE_NAME="homeassistant"
+CONTAINER_NAME="homeassistant-test"
+
 # Vérifier que le conteneur existe
-if ! docker ps -a --format '{{.Names}}' | grep -q "^homeassistant-test$"; then
-    echo "❌ Le conteneur homeassistant-test n'existe pas."
-    echo "   Lancez d'abord: ./docker-test.sh"
+if ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
+    echo "❌ Le conteneur ${CONTAINER_NAME} n'existe pas."
+    echo "   Lancez d'abord: ./docker-test.sh ou docker compose up -d"
     exit 1
 fi
 
 # Vérifier que le conteneur est en cours d'exécution
-if ! docker ps --format '{{.Names}}' | grep -q "^homeassistant-test$"; then
+if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
     echo "⚠️  Le conteneur n'est pas en cours d'exécution. Démarrage..."
     if docker compose version &> /dev/null; then
         docker compose up -d
@@ -51,9 +55,9 @@ echo ""
 
 # Redémarrer le conteneur
 if docker compose version &> /dev/null; then
-    docker compose restart homeassistant
+    docker compose restart "$SERVICE_NAME"
 else
-    docker-compose restart homeassistant
+    docker-compose restart "$SERVICE_NAME"
 fi
 
 echo "⏳ Attente du redémarrage de Home Assistant..."
@@ -64,9 +68,9 @@ echo ""
 echo "📋 Logs récents (dernières 30 lignes):"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 if docker compose version &> /dev/null; then
-    docker compose logs --tail=30 homeassistant 2>&1 | tail -30
+    docker compose logs --tail=30 "$SERVICE_NAME" 2>&1 | tail -30
 else
-    docker-compose logs --tail=30 homeassistant 2>&1 | tail -30
+    docker-compose logs --tail=30 "$SERVICE_NAME" 2>&1 | tail -30
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

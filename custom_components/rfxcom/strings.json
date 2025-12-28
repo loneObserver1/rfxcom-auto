@@ -3,7 +3,10 @@
     "step": {
       "user": {
         "title": "Configuration RFXCOM",
-        "description": "Sélectionnez le type de connexion pour votre interface RFXCOM"
+        "description": "Sélectionnez le type de connexion pour votre interface RFXCOM",
+        "data": {
+          "connection_type": "Type de connexion"
+        }
       },
       "usb": {
         "title": "Configuration USB",
@@ -49,8 +52,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Options RFXCOM",
-        "description": "Gérez vos appareils RFXCOM et les paramètres\n\n**Appareils configurés ({devices_count}):**\n{devices_list}\n\n**Auto-détection:** {auto_registry_status}\n**Mode debug:** {debug_status}\n\nSélectionnez une action ci-dessous :"
+        "title": "Options RFXCOM"
       },
       "add_device": {
         "title": "Ajouter un appareil",
@@ -95,15 +97,22 @@
           "ready": "L'appareil est en mode appairage et prêt"
         }
       },
+      "pair_device_ac_listen": {
+        "title": "Appairage AC - Écoute",
+        "description": "{instructions}",
+        "data": {
+          "ready_to_listen": "Je suis prêt à envoyer une commande ON/OFF"
+        }
+      },
       "add_device_manual": {
         "title": "Ajouter un appareil (manuel)",
-        "description": "Ajoutez un nouvel appareil RFXCOM en saisissant manuellement les informations.\n\n**Pour ARC (Lighting1)** : Remplissez House Code et Unit Code uniquement (laissez Device ID vide).\n**Pour AC (Lighting2)** : Remplissez Device ID uniquement.",
+        "description": "Ajoutez un nouvel appareil RFXCOM en saisissant manuellement les informations.\n\n**Pour ARC et autres protocoles Lighting1** : Remplissez Code Maison (A-P) et Code Unité (1-16).\n**Pour AC et autres protocoles Lighting2-6** : Remplissez ID de l'appareil (hexadécimal).\n**Pour TEMP_HUM** : Remplissez ID de l'appareil (décimal ou hex).\n\n📖 Consultez le [Guide des protocoles](https://github.com/loneObserver1/rfxcom-auto/blob/main/PROTOCOLES.md) pour plus d'informations.",
         "data": {
           "name": "Nom de l'appareil",
-          "protocol": "Protocole (ou 'auto' pour détection automatique)",
-          "device_id": "ID de l'appareil (pour AC et autres - laissez vide pour ARC)",
-          "house_code": "Code maison (pour ARC - A, B, C, ..., P)",
-          "unit_code": "Code unité (pour ARC - 1, 2, 3, ..., 16)"
+          "protocol": "Protocole",
+          "device_id": "ID de l'appareil (pour AC, TEMP_HUM et autres protocoles Lighting2-6)",
+          "house_code": "Code maison (pour ARC et autres protocoles Lighting1 - A, B, C, ..., P)",
+          "unit_code": "Code unité (pour ARC et autres protocoles Lighting1 - 1, 2, 3, ..., 16)"
         }
       },
       "edit_device": {

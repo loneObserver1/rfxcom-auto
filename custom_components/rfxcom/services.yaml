@@ -1,39 +1,43 @@
-pair_device:
-  name: Appairer un appareil
-  description: Appaire un nouvel appareil RFXCOM
+send_command:
+  name: Envoyer une commande
+  description: Envoie une commande ON/OFF ou appaire une prise AC via Node.js
   fields:
     protocol:
       name: Protocole
-      description: Protocole de l'appareil (AC ou ARC)
+      description: Protocole de l'appareil (AC uniquement pour l'instant)
       required: true
       selector:
         select:
           options:
             - AC
-            - ARC
     device_id:
-      name: ID de l'appareil
-      description: ID de l'appareil (pour protocole AC)
-      required: false
-      selector:
-        text:
-    house_code:
-      name: Code maison
-      description: Code maison (pour protocole ARC)
-      required: false
-      selector:
-        text:
-    unit_code:
-      name: Code unité
-      description: Code unité (pour protocole ARC)
-      required: false
-      selector:
-        text:
-    name:
-      name: Nom
-      description: Nom de l'appareil dans Home Assistant
+      name: Device ID
+      description: "Identifiant de l'appareil (hex, ex: 02382C82)"
       required: true
       selector:
         text:
-
-
+    unit_code:
+      name: Unit Code
+      description: Code unité (1-16)
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 16
+          step: 1
+    command:
+      name: Commande
+      description: Commande à envoyer
+      required: true
+      selector:
+        select:
+          options:
+            - "on"
+            - "off"
+            - "pair"
+    port:
+      name: Port USB
+      description: Port USB du RFXCOM (optionnel, auto-détection si non spécifié)
+      required: false
+      selector:
+        text:

@@ -63,7 +63,9 @@ from .const import (
     CONF_HOUSE_CODE,
     CONF_UNIT_CODE,
     CONF_DEVICE_ID,
+    DEVICE_TYPE_SENSOR,
 )
+from .node_bridge import NodeBridge
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,6 +96,9 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         self._lock = asyncio.Lock()
         self._receive_task: asyncio.Task | None = None
         self._discovered_devices: dict[str, dict[str, Any]] = {}
+        # Bridge Node.js pour les commandes AC
+        self._node_bridge: NodeBridge | None = None
+        self._use_node_bridge = True  # Utiliser Node.js pour AC par défaut
 
     async def async_setup(self) -> None:
         """Configure la connexion USB ou réseau."""
@@ -140,6 +145,50 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             else:
                 raise ValueError(f"Type de connexion inconnu: {self.connection_type}")
 
+            # Initialiser le bridge Node.js pour toutes les commandes
+            if self._use_node_bridge and self.connection_type == CONNECTION_TYPE_USB:
+                try:
+                    _LOGGER.info("🔍 Vérification de Node.js pour le bridge RFXCOM...")
+                    _LOGGER.debug("Initialisation du bridge Node.js pour toutes les commandes")
+                    self._node_bridge = NodeBridge(port=self.port)
+                    await self._node_bridge.initialize()
+                    _LOGGER.info("✅ Bridge Node.js initialisé avec succès pour toutes les commandes")
+                except FileNotFoundError as e:
+                    from homeassistant.exceptions import ConfigEntryNotReady
+                    _LOGGER.error(
+                        "❌ Script Node.js introuvable: %s", e
+                    )
+                    raise ConfigEntryNotReady(
+                        f"Script Node.js introuvable: {e}. "
+                        "Veuillez vérifier que rfxcom_node_bridge.js est présent dans custom_components/rfxcom/"
+                    )
+                except RuntimeError as e:
+                    from homeassistant.exceptions import ConfigEntryNotReady
+                    _LOGGER.error(
+                        "❌ Node.js non disponible ou erreur d'initialisation: %s", e
+                    )
+                    raise ConfigEntryNotReady(
+                        f"Node.js non disponible: {e}. "
+                        "Le bridge Node.js est requis pour les connexions USB. "
+                        "Veuillez installer Node.js ou utiliser une connexion réseau."
+                    )
+                except Exception as e:
+                    from homeassistant.exceptions import ConfigEntryNotReady
+                    _LOGGER.error(
+                        "❌ Erreur inattendue lors de l'initialisation du bridge Node.js: %s", e,
+                        exc_info=True
+                    )
+                    raise ConfigEntryNotReady(
+                        f"Erreur lors de l'initialisation du bridge Node.js: {e}"
+                    )
+            elif self.connection_type == CONNECTION_TYPE_NETWORK:
+                _LOGGER.info(
+                    "ℹ️ Connexion réseau détectée, Node.js non utilisé (fonctionne uniquement en USB)"
+                )
+                _LOGGER.info(
+                    "💡 Pour utiliser Node.js (recommandé), configurez une connexion USB"
+                )
+
             # Démarrer la réception de messages si auto-registry est activé
             if self.auto_registry:
                 _LOGGER.debug("Auto-registry activé, démarrage de la boucle de réception")
@@ -160,6 +209,14 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 await self._receive_task
             except asyncio.CancelledError:
                 pass
+
+        # Fermer le bridge Node.js
+        if self._node_bridge:
+            try:
+                await self._node_bridge.close()
+            except Exception as e:
+                _LOGGER.error("Erreur lors de la fermeture du bridge Node.js: %s", e)
+            self._node_bridge = None
 
         if self.connection_type == CONNECTION_TYPE_USB:
             if self.serial_port and self.serial_port.is_open:
@@ -214,21 +271,102 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     subtype,
                 )
 
-                # Construire la commande selon le type de paquet
+                # Essayer d'utiliser Node.js pour tous les protocoles si disponible
+                if self._use_node_bridge and self._node_bridge:
+                    try:
+                        # Convertir unit_code en int si nécessaire
+                        unit_code_int = 1
+                        if unit_code:
+                            try:
+                                unit_code_int = int(unit_code)
+                            except (ValueError, TypeError):
+                                unit_code_int = 1
+                        
+                        # Convertir command en format Node.js
+                        cmd_str = "on" if command == CMD_ON else "off"
+                        
+                        _LOGGER.info(
+                            "🔵 Tentative d'envoi via Node.js: protocole=%s, device_id=%s, house_code=%s, unit_code=%s, command=%s",
+                            protocol,
+                            device_id,
+                            house_code,
+                            unit_code_int,
+                            cmd_str,
+                        )
+                        
+                        success = await self._node_bridge.send_command(
+                            protocol=protocol,
+                            device_id=device_id,
+                            house_code=house_code,
+                            unit_code=unit_code_int,
+                            command=cmd_str,
+                        )
+                        
+                        if success:
+                            _LOGGER.info(
+                                "✅ Commande envoyée via Node.js: protocole=%s, device=%s/%s, commande=%s",
+                                protocol,
+                                device_id or house_code,
+                                unit_code_int,
+                                command,
+                            )
+                            return True
+                        else:
+                            _LOGGER.warning(
+                                "⚠️ Échec de l'envoi via Node.js (protocole=%s), basculement vers Python",
+                                protocol,
+                            )
+                            # Continuer avec Python en cas d'échec
+                    except RuntimeError as e:
+                        _LOGGER.warning(
+                            "⚠️ Erreur Runtime Node.js (protocole=%s), basculement vers Python: %s",
+                            protocol,
+                            e,
+                        )
+                        # Continuer avec Python en cas d'erreur
+                    except Exception as e:
+                        _LOGGER.warning(
+                            "⚠️ Erreur inattendue Node.js (protocole=%s), basculement vers Python: %s",
+                            protocol,
+                            e,
+                            exc_info=True,
+                        )
+                        # Continuer avec Python en cas d'erreur
+                elif self.connection_type == CONNECTION_TYPE_NETWORK:
+                    _LOGGER.info(
+                        "ℹ️ Connexion réseau détectée, Node.js non disponible (USB uniquement), utilisation de Python pour protocole=%s",
+                        protocol,
+                    )
+                elif not self._use_node_bridge:
+                    _LOGGER.info(
+                        "ℹ️ Bridge Node.js désactivé ou non initialisé, utilisation de Python pour protocole=%s",
+                        protocol,
+                    )
+                elif not self._node_bridge:
+                    _LOGGER.info(
+                        "ℹ️ Bridge Node.js non initialisé, utilisation de Python pour protocole=%s",
+                        protocol,
+                    )
+                
+                # Méthode Python (fallback si Node.js non disponible ou échec)
                 if packet_type == PACKET_TYPE_LIGHTING1:
                     cmd_bytes = self._build_lighting1_command(
                         protocol, subtype, house_code, unit_code, command
                     )
                 elif packet_type == PACKET_TYPE_LIGHTING2:
-                    # Convertir unit_code en int si fourni (pour AC)
-                    # Par défaut 1 pour AC si non fourni
                     unit_code_int = 1  # Par défaut 1 pour AC
                     if unit_code:
                         try:
                             unit_code_int = int(unit_code)
                         except (ValueError, TypeError):
-                            unit_code_int = 1  # Par défaut 1 pour AC en cas d'erreur
-                    _LOGGER.debug("AC command: device_id=%s, unit_code=%s (int=%s), command=%s", device_id, unit_code, unit_code_int, command)
+                            unit_code_int = 1
+                    _LOGGER.debug(
+                        "Lighting2 command (Python): device_id=%s, unit_code=%s (int=%s), command=%s",
+                        device_id,
+                        unit_code,
+                        unit_code_int,
+                        command,
+                    )
                     cmd_bytes = self._build_lighting2_command(
                         protocol, subtype, device_id, command, unit_code_int
                     )
@@ -1043,6 +1181,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                 device_config[CONF_UNIT_CODE] = device_info[CONF_UNIT_CODE]
             elif protocol == PROTOCOL_TEMP_HUM:
                 device_config[CONF_DEVICE_ID] = device_info[CONF_DEVICE_ID]
+                device_config["device_type"] = DEVICE_TYPE_SENSOR  # Les sondes sont automatiquement de type sensor
                 # Stocker les données du capteur pour les entités sensor
                 device_config["sensor_data"] = {
                     "temperature": device_info.get("temperature"),

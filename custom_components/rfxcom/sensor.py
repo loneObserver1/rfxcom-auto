@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -69,24 +70,16 @@ async def async_setup_entry(
                 name=name,
                 manufacturer="RFXCOM",
                 model=PROTOCOL_TEMP_HUM,
+                via_device=(DOMAIN, entry.entry_id),
             )
 
-            # Créer les entités température et humidité
+            # Créer une seule entité composite pour température et humidité
             entities.append(
-                RFXCOMTemperatureSensor(
+                RFXCOMTempHumSensor(
                     coordinator=coordinator,
-                    name=f"{name} Temperature",
+                    name=name,
                     device_id=device_id,
-                    unique_id=f"{unique_id}_temp",
-                    device_info=device_info,
-                )
-            )
-            entities.append(
-                RFXCOMHumiditySensor(
-                    coordinator=coordinator,
-                    name=f"{name} Humidity",
-                    device_id=device_id,
-                    unique_id=f"{unique_id}_hum",
+                    unique_id=unique_id,
                     device_info=device_info,
                 )
             )
@@ -95,11 +88,12 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class RFXCOMTemperatureSensor(
+class RFXCOMTempHumSensor(
     CoordinatorEntity[RFXCOMCoordinator], SensorEntity
 ):
-    """Représente un capteur de température RFXCOM."""
+    """Représente un capteur température/humidité RFXCOM (entité composite)."""
 
+    _attr_icon = "mdi:thermometer"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -112,18 +106,20 @@ class RFXCOMTemperatureSensor(
         unique_id: str,
         device_info: DeviceInfo | None = None,
     ) -> None:
-        """Initialise le capteur de température."""
+        """Initialise le capteur température/humidité."""
         super().__init__(coordinator)
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._attr_device_info = device_info
         self._device_id = device_id
-        self._native_value: float | None = None
+        self._temperature: float | None = None
+        self._humidity: int | None = None
+        self._status: str | None = None
 
     @property
     def native_value(self) -> float | None:
-        """Retourne la valeur de température."""
-        # Récupérer la valeur depuis les appareils découverts
+        """Retourne la valeur de température (utilisée comme valeur principale)."""
+        # Récupérer les valeurs depuis les appareils découverts
         discovered = self.coordinator.get_discovered_devices()
         for device in discovered:
             if (
@@ -131,67 +127,45 @@ class RFXCOMTemperatureSensor(
                 and device.get(CONF_DEVICE_ID) == self._device_id
             ):
                 temp = device.get("temperature")
+                hum = device.get("humidity")
+                status = device.get("status")
+                
                 if temp is not None:
-                    if self._native_value != temp:
+                    if self._temperature != temp:
                         _LOGGER.debug(
                             "Température mise à jour: %s = %.1f°C (était %.1f°C)",
                             self._attr_name,
                             temp,
-                            self._native_value,
+                            self._temperature,
                         )
-                    self._native_value = temp
-                break
-
-        return self._native_value
-
-
-class RFXCOMHumiditySensor(
-    CoordinatorEntity[RFXCOMCoordinator], SensorEntity
-):
-    """Représente un capteur d'humidité RFXCOM."""
-
-    _attr_device_class = SensorDeviceClass.HUMIDITY
-    _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_state_class = SensorStateClass.MEASUREMENT
-
-    def __init__(
-        self,
-        coordinator: RFXCOMCoordinator,
-        name: str,
-        device_id: str,
-        unique_id: str,
-        device_info: DeviceInfo | None = None,
-    ) -> None:
-        """Initialise le capteur d'humidité."""
-        super().__init__(coordinator)
-        self._attr_name = name
-        self._attr_unique_id = unique_id
-        self._attr_device_info = device_info
-        self._device_id = device_id
-        self._native_value: int | None = None
-
-    @property
-    def native_value(self) -> int | None:
-        """Retourne la valeur d'humidité."""
-        # Récupérer la valeur depuis les appareils découverts
-        discovered = self.coordinator.get_discovered_devices()
-        for device in discovered:
-            if (
-                device.get(CONF_PROTOCOL) == PROTOCOL_TEMP_HUM
-                and device.get(CONF_DEVICE_ID) == self._device_id
-            ):
-                hum = device.get("humidity")
+                    self._temperature = temp
+                
                 if hum is not None:
                     hum_int = int(hum)
-                    if self._native_value != hum_int:
+                    if self._humidity != hum_int:
                         _LOGGER.debug(
                             "Humidité mise à jour: %s = %s%% (était %s%%)",
                             self._attr_name,
                             hum_int,
-                            self._native_value,
+                            self._humidity,
                         )
-                    self._native_value = hum_int
+                    self._humidity = hum_int
+                
+                if status is not None:
+                    self._status = status
+                
                 break
 
-        return self._native_value
+        return self._temperature
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Retourne les attributs supplémentaires (humidité, status)."""
+        attrs = {}
+        if self._humidity is not None:
+            attrs["humidity"] = self._humidity
+            attrs["humidity_unit"] = PERCENTAGE
+        if self._status is not None:
+            attrs["status"] = self._status
+        return attrs
 

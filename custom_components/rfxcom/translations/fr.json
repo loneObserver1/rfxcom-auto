@@ -3,7 +3,10 @@
     "step": {
       "user": {
         "title": "Configuration RFXCOM",
-        "description": "Sélectionnez le type de connexion pour votre interface RFXCOM"
+        "description": "Sélectionnez le type de connexion pour votre interface RFXCOM",
+        "data": {
+          "connection_type": "Type de connexion"
+        }
       },
       "usb": {
         "title": "Configuration USB",
@@ -20,7 +23,8 @@
         "data": {
           "port": "Port série (ex: /dev/ttyUSB0 ou COM3)",
           "baudrate": "Vitesse de transmission (baud)",
-          "auto_registry": "Détection automatique des appareils"
+          "auto_registry": "Détection automatique des appareils",
+          "enabled_protocols": "Protocoles activés (sélection multiple)"
         }
       },
       "network": {
@@ -29,7 +33,8 @@
         "data": {
           "host": "Adresse IP",
           "network_port": "Port",
-          "auto_registry": "Détection automatique des appareils"
+          "auto_registry": "Détection automatique des appareils",
+          "enabled_protocols": "Protocoles activés (sélection multiple)"
         }
       }
     },
@@ -47,8 +52,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Options RFXCOM",
-        "description": "Gérez vos appareils RFXCOM\n\n**Appareils configurés ({devices_count}):**\n{devices_list}\n\nSélectionnez une action ci-dessous :"
+        "title": "Options RFXCOM"
       },
       "add_device": {
         "title": "Ajouter un appareil",
@@ -91,6 +95,13 @@
         "description": "{instructions}",
         "data": {
           "ready": "L'appareil est en mode appairage et prêt"
+        }
+      },
+      "pair_device_ac_listen": {
+        "title": "Appairage AC - Écoute",
+        "description": "{instructions}",
+        "data": {
+          "ready_to_listen": "Je suis prêt à envoyer une commande ON/OFF"
         }
       },
       "add_device_manual": {

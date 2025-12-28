@@ -168,10 +168,11 @@ def test_hex_string_to_bytes_edge_cases():
     assert len(result) == 4
     assert result == bytes([0x00, 0x00, 0x00, 0x00])
     
-    # Chaîne trop longue
+    # Chaîne trop longue (tronquée en gardant les derniers bytes - LSB)
     result = coordinator._hex_string_to_bytes("0102030405060708090a0b0c0d0e0f10", 4)
     assert len(result) == 4
-    assert result == bytes([0x01, 0x02, 0x03, 0x04])
+    # La fonction garde les 4 derniers bytes: 0x0d, 0x0e, 0x0f, 0x10
+    assert result == bytes([0x0d, 0x0e, 0x0f, 0x10])
     
     # Exactement la bonne longueur
     result = coordinator._hex_string_to_bytes("01020304", 4)
@@ -207,10 +208,10 @@ def test_build_ac_command_padding():
     entry = MockEntry({"connection_type": const.CONNECTION_TYPE_USB})
     coordinator = RFXCOMCoordinator(hass, entry)
     
-    # ID court devrait être complété avec des zéros (4 bytes pour Lighting2)
+    # ID court devrait être complété avec des zéros au début (padding left, 4 bytes pour Lighting2)
     cmd = coordinator._build_lighting2_command(const.PROTOCOL_AC, const.SUBTYPE_AC, "01", const.CMD_ON)
     assert len(cmd) == 12
-    assert cmd[4] == 0x01  # Premier byte de l'ID
-    assert cmd[5:8] == bytes([0x00, 0x00, 0x00])  # Reste complété avec des zéros
+    # Avec padding left, "01" devient [0x00, 0x00, 0x00, 0x01]
+    assert cmd[4:8] == bytes([0x00, 0x00, 0x00, 0x01])  # ID complété avec zéros au début
 
 

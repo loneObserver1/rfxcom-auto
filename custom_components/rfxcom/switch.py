@@ -58,17 +58,18 @@ async def async_setup_entry(
         unit_code = device_config.get(CONF_UNIT_CODE)
         
         # Construire l'identifiant unique avec l'index pour garantir l'unicité
+        # Inclure l'index dans device_identifier pour éviter les collisions
         if device_id:
             unique_id = f"{entry.entry_id}_{protocol}_{device_id}_{idx}"
-            device_identifier = f"{protocol}_{device_id}"
+            device_identifier = f"{protocol}_{device_id}_{idx}"  # Inclure idx pour garantir l'unicité
         elif house_code and unit_code:
             unique_id = f"{entry.entry_id}_{protocol}_{house_code}_{unit_code}_{idx}"
-            device_identifier = f"{protocol}_{house_code}_{unit_code}"
+            device_identifier = f"{protocol}_{house_code}_{unit_code}_{idx}"  # Inclure idx pour garantir l'unicité
         else:
             # Fallback: utiliser le nom et l'index
             name_slug = device_config.get("name", "unknown").lower().replace(" ", "_")
             unique_id = f"{entry.entry_id}_{protocol}_{name_slug}_{idx}"
-            device_identifier = f"{protocol}_{name_slug}"
+            device_identifier = f"{protocol}_{name_slug}_{idx}"  # Inclure idx pour garantir l'unicité
         
         # Créer ou récupérer le device dans le device registry
         device_registry = dr.async_get(hass)
@@ -93,6 +94,7 @@ async def async_setup_entry(
                 name=device_config.get("name", "Sans nom"),
                 manufacturer="RFXCOM",
                 model=protocol,
+                via_device=(DOMAIN, entry.entry_id),
             ),
         )
         entities.append(entity)
@@ -103,6 +105,8 @@ async def async_setup_entry(
 
 class RFXCOMSwitch(CoordinatorEntity[RFXCOMCoordinator], SwitchEntity):
     """Représente un interrupteur RFXCOM."""
+
+    _attr_icon = "mdi:light-switch"
 
     def __init__(
         self,

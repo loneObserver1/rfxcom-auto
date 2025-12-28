@@ -1,7 +1,11 @@
 """Services pour l'intégration RFXCOM."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
+import subprocess
+from pathlib import Path
 
 import voluptuous as vol
 
@@ -47,6 +51,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 SERVICE_PAIR_DEVICE = "pair_device"
+SERVICE_SEND_COMMAND = "send_command"
 
 PAIR_DEVICE_SCHEMA = vol.Schema(
     {
@@ -57,6 +62,66 @@ PAIR_DEVICE_SCHEMA = vol.Schema(
         vol.Optional(CONF_UNIT_CODE): cv.string,
     }
 )
+
+SEND_COMMAND_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_PROTOCOL): vol.In([PROTOCOL_AC]),
+        vol.Required(CONF_DEVICE_ID): cv.string,
+        vol.Required(CONF_UNIT_CODE): cv.string,
+        vol.Required("command"): vol.In(["on", "off", "pair"]),
+        vol.Optional("port"): cv.string,
+    }
+)
+
+
+def _get_node_script_path() -> Path:
+    """Retourne le chemin du script Node.js."""
+    # Le script est dans tmp/ à la racine du projet
+    # Depuis custom_components/rfxcom/services.py, on remonte de 3 niveaux
+    script_path = Path(__file__).parent.parent.parent / "tmp" / "rfxcom_node_service.js"
+    return script_path
+
+
+async def _call_node_script(
+    hass: HomeAssistant, action: str, device_id: str, unit_code: str, port: str | None = None
+) -> bool:
+    """Appelle le script Node.js pour envoyer une commande."""
+    script_path = _get_node_script_path()
+    
+    if not script_path.exists():
+        _LOGGER.error("Script Node.js introuvable: %s", script_path)
+        return False
+    
+    # Construire la commande
+    cmd = ["node", str(script_path), action, device_id, str(unit_code)]
+    if port:
+        cmd.append(port)
+    
+    _LOGGER.debug("Exécution de la commande Node.js: %s", " ".join(cmd))
+    
+    try:
+        # Exécuter le script de manière asynchrone
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0:
+            _LOGGER.info("Commande Node.js exécutée avec succès: %s", stdout.decode().strip())
+            return True
+        else:
+            _LOGGER.error(
+                "Erreur lors de l'exécution du script Node.js (code %d): %s",
+                process.returncode,
+                stderr.decode().strip() if stderr else stdout.decode().strip(),
+            )
+            return False
+    except Exception as e:
+        _LOGGER.error("Exception lors de l'appel du script Node.js: %s", e)
+        return False
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -164,12 +229,43 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _LOGGER.debug("Rechargement de l'intégration pour créer la nouvelle entité")
         await hass.config_entries.async_reload(entry.entry_id)
 
+    async def send_command(call: ServiceCall) -> None:
+        """Envoie une commande ON/OFF via Node.js."""
+        _LOGGER.debug("Service send_command appelé: %s", call.data)
+        protocol = call.data[CONF_PROTOCOL]
+        device_id = call.data[CONF_DEVICE_ID]
+        unit_code = call.data[CONF_UNIT_CODE]
+        command = call.data["command"]
+        port = call.data.get("port")
+        
+        if protocol != PROTOCOL_AC:
+            _LOGGER.error("Le service send_command ne supporte que le protocole AC pour l'instant")
+            return
+        
+        _LOGGER.info(
+            "Envoi de la commande %s pour Device ID %s, Unit Code %s",
+            command,
+            device_id,
+            unit_code,
+        )
+        
+        success = await _call_node_script(hass, command, device_id, unit_code, port)
+        
+        if success:
+            _LOGGER.info("Commande %s envoyée avec succès", command)
+        else:
+            _LOGGER.error("Échec de l'envoi de la commande %s", command)
+    
     hass.services.async_register(
         DOMAIN, SERVICE_PAIR_DEVICE, pair_device, schema=PAIR_DEVICE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SEND_COMMAND, send_command, schema=SEND_COMMAND_SCHEMA
     )
 
 
 async def async_unload_services(hass: HomeAssistant) -> None:
     """Décharge les services RFXCOM."""
     hass.services.async_remove(DOMAIN, SERVICE_PAIR_DEVICE)
+    hass.services.async_remove(DOMAIN, SERVICE_SEND_COMMAND)
 
