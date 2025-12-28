@@ -196,30 +196,14 @@ class NodeBridge:
             return False
 
     async def initialize(self) -> None:
-        """Initialise la connexion RFXCOM via Node.js."""
-        # Vérifier la présence de Node.js
-        _LOGGER.info("🔍 Vérification de la présence de Node.js...")
-        if not await self._check_nodejs_available():
-            _LOGGER.warning("⚠️ Node.js non détecté, tentative d'installation automatique...")
-            if not await self._try_install_nodejs():
-                raise RuntimeError(
-                    "Node.js n'est pas disponible et n'a pas pu être installé automatiquement. "
-                    "Veuillez installer Node.js manuellement: https://nodejs.org/"
-                )
-            # Vérifier à nouveau après l'installation
-            if not await self._check_nodejs_available():
-                raise RuntimeError(
-                    "Node.js a été installé mais n'est toujours pas détecté. "
-                    "Veuillez redémarrer Home Assistant ou vérifier votre PATH."
-                )
-        
-        # Vérifier et installer les dépendances npm
-        _LOGGER.info("🔍 Vérification des dépendances npm...")
-        if not await self._check_npm_dependencies():
-            raise RuntimeError(
-                "Les dépendances npm (rfxcom) ne sont pas installées. "
-                "Veuillez installer les dépendances manuellement avec 'npm install' dans le répertoire custom_components/rfxcom/."
-            )
+        """Initialise la connexion RFXCOM via Node.js (subprocess local - déprécié)."""
+        # Cette méthode n'est plus utilisée - on utilise maintenant l'add-on HTTP uniquement
+        # Gardée pour compatibilité mais ne devrait jamais être appelée
+        raise RuntimeError(
+            "Le subprocess Node.js local n'est plus supporté. "
+            "Veuillez installer et utiliser l'add-on RFXCOM Node.js Bridge. "
+            "Consultez les logs pour les instructions d'installation."
+        )
         
         script_path = self._get_script_path()
         

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+from pathlib import Path
 from typing import Any
 
 import serial
@@ -65,7 +66,7 @@ from .const import (
     CONF_DEVICE_ID,
     DEVICE_TYPE_SENSOR,
 )
-from .node_bridge import NodeBridge
+from .node_bridge_http import NodeBridgeHTTP
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,24 +97,17 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         self._lock = asyncio.Lock()
         self._receive_task: asyncio.Task | None = None
         self._discovered_devices: dict[str, dict[str, Any]] = {}
-        # Bridge Node.js pour les commandes AC
-        self._node_bridge: NodeBridge | None = None
+        # Bridge Node.js pour les commandes via l'add-on HTTP uniquement
+        self._node_bridge: NodeBridgeHTTP | None = None
         self._use_node_bridge = True  # Utiliser Node.js pour AC par défaut
 
     async def async_setup(self) -> None:
         """Configure la connexion USB ou réseau."""
         try:
             if self.connection_type == CONNECTION_TYPE_USB:
-                _LOGGER.debug("Configuration connexion USB: port=%s, baudrate=%s", self.port, self.baudrate)
-                self.serial_port = await self.hass.async_add_executor_job(
-                    serial.Serial,
-                    self.port,
-                    self.baudrate,
-                )
-                self.serial_port.timeout = 1
-                self.serial_port.write_timeout = 1
-                _LOGGER.info("Connexion RFXCOM USB établie sur %s", self.port)
-                _LOGGER.debug("Port série configuré: timeout=1s, write_timeout=1s")
+                _LOGGER.debug("Configuration connexion USB: port=%s", self.port)
+                # Le port série n'est plus ouvert ici - c'est l'add-on qui le gère
+                _LOGGER.info("Connexion USB configurée - Le port série sera géré par l'add-on RFXCOM Node.js Bridge")
             elif self.connection_type == CONNECTION_TYPE_NETWORK:
                 _LOGGER.debug("Configuration connexion réseau: host=%s, port=%s", self.host, self.network_port)
                 # Fermer l'ancien socket s'il existe
@@ -145,42 +139,49 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             else:
                 raise ValueError(f"Type de connexion inconnu: {self.connection_type}")
 
-            # Initialiser le bridge Node.js pour toutes les commandes
+            # Initialiser le bridge Node.js via l'add-on HTTP uniquement
             if self._use_node_bridge and self.connection_type == CONNECTION_TYPE_USB:
                 try:
-                    _LOGGER.info("🔍 Vérification de Node.js pour le bridge RFXCOM...")
-                    _LOGGER.debug("Initialisation du bridge Node.js pour toutes les commandes")
-                    self._node_bridge = NodeBridge(port=self.port)
+                    _LOGGER.info("🔍 Vérification de la communication avec l'add-on RFXCOM Node.js Bridge...")
+                    
+                    # Utiliser uniquement l'add-on HTTP avec le port série configuré
+                    self._node_bridge = NodeBridgeHTTP(serial_port=self.port)
                     await self._node_bridge.initialize()
-                    _LOGGER.info("✅ Bridge Node.js initialisé avec succès pour toutes les commandes")
-                except FileNotFoundError as e:
-                    from homeassistant.exceptions import ConfigEntryNotReady
-                    _LOGGER.error(
-                        "❌ Script Node.js introuvable: %s", e
-                    )
-                    raise ConfigEntryNotReady(
-                        f"Script Node.js introuvable: {e}. "
-                        "Veuillez vérifier que rfxcom_node_bridge.js est présent dans custom_components/rfxcom/"
-                    )
-                except RuntimeError as e:
-                    from homeassistant.exceptions import ConfigEntryNotReady
-                    _LOGGER.error(
-                        "❌ Node.js non disponible ou erreur d'initialisation: %s", e
-                    )
-                    raise ConfigEntryNotReady(
-                        f"Node.js non disponible: {e}. "
-                        "Le bridge Node.js est requis pour les connexions USB. "
-                        "Veuillez installer Node.js ou utiliser une connexion réseau."
-                    )
+                    _LOGGER.info("✅ Add-on RFXCOM Node.js Bridge connecté et opérationnel")
                 except Exception as e:
                     from homeassistant.exceptions import ConfigEntryNotReady
+                    error_msg = str(e)
                     _LOGGER.error(
-                        "❌ Erreur inattendue lors de l'initialisation du bridge Node.js: %s", e,
+                        "❌ Impossible de se connecter à l'add-on RFXCOM Node.js Bridge: %s (type: %s)",
+                        e,
+                        type(e).__name__,
                         exc_info=True
                     )
-                    raise ConfigEntryNotReady(
-                        f"Erreur lors de l'initialisation du bridge Node.js: {e}"
+                    
+                    # Message d'erreur clair avec instructions
+                    detailed_msg = (
+                        "L'add-on RFXCOM Node.js Bridge est requis pour les connexions USB. "
+                        "L'add-on n'est pas disponible ou n'est pas démarré.\n\n"
+                        "Pour installer et démarrer l'add-on:\n"
+                        "1. Allez dans Paramètres > Modules complémentaires > Dépôts de modules complémentaires\n"
+                        "2. Ajoutez le dépôt: https://github.com/loneObserver1/rfxcom-nodejs-bridge-addon.git\n"
+                        "   Ou installez l'add-on manuellement depuis ha_config/local_addons/rfxcom-nodejs-bridge\n"
+                        "3. Installez et démarrez l'add-on 'RFXCOM Node.js Bridge'\n"
+                        "4. Configurez le port série dans les options de l'add-on (par défaut: /dev/ttyUSB0)\n"
+                        "5. Redémarrez Home Assistant\n\n"
+                        f"Erreur de connexion: {error_msg}"
                     )
+                    
+                    _LOGGER.error(
+                        "\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "📦 ADD-ON RFXCOM NODE.JS BRIDGE REQUIS\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "%s\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+                        detailed_msg
+                    )
+                    raise ConfigEntryNotReady(detailed_msg)
             elif self.connection_type == CONNECTION_TYPE_NETWORK:
                 _LOGGER.info(
                     "ℹ️ Connexion réseau détectée, Node.js non utilisé (fonctionne uniquement en USB)"
@@ -197,7 +198,12 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             else:
                 _LOGGER.debug("Auto-registry désactivé, pas de réception de messages")
         except Exception as err:
-            _LOGGER.error("Erreur lors de la connexion RFXCOM: %s", err)
+            _LOGGER.error(
+                "Erreur lors de la connexion RFXCOM: %s (type: %s)",
+                err,
+                type(err).__name__,
+                exc_info=True
+            )
             raise
 
     async def async_shutdown(self) -> None:
@@ -219,9 +225,10 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             self._node_bridge = None
 
         if self.connection_type == CONNECTION_TYPE_USB:
-            if self.serial_port and self.serial_port.is_open:
-                await self.hass.async_add_executor_job(self.serial_port.close)
-                _LOGGER.info("Connexion RFXCOM USB fermée")
+            # Fermer la connexion à l'add-on HTTP si elle existe
+            if self._node_bridge:
+                await self._node_bridge.close()
+                _LOGGER.info("Connexion à l'add-on RFXCOM Node.js Bridge fermée")
         elif self.connection_type == CONNECTION_TYPE_NETWORK:
             if self.socket:
                 await self.hass.async_add_executor_job(self.socket.close)
@@ -247,10 +254,11 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
         async with self._lock:
             # Vérifier la connexion
             if self.connection_type == CONNECTION_TYPE_USB:
-                if not self.serial_port or not self.serial_port.is_open:
-                    _LOGGER.error("Le port série n'est pas ouvert")
+                # Pour USB, on utilise uniquement l'add-on HTTP - pas de vérification de port série nécessaire
+                if not self._node_bridge:
+                    _LOGGER.error("L'add-on Node.js Bridge n'est pas initialisé")
                     return False
-                _LOGGER.debug("Port série vérifié: ouvert=%s", self.serial_port.is_open)
+                _LOGGER.debug("Add-on Node.js Bridge vérifié: disponible")
             elif self.connection_type == CONNECTION_TYPE_NETWORK:
                 if not self.socket:
                     _LOGGER.error("La socket réseau n'est pas ouverte")
@@ -271,8 +279,12 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                     subtype,
                 )
 
-                # Essayer d'utiliser Node.js pour tous les protocoles si disponible
-                if self._use_node_bridge and self._node_bridge:
+                # Pour USB, utiliser uniquement l'add-on HTTP
+                if self.connection_type == CONNECTION_TYPE_USB:
+                    if not self._node_bridge:
+                        _LOGGER.error("L'add-on Node.js Bridge n'est pas disponible pour USB")
+                        return False
+                    
                     try:
                         # Convertir unit_code en int si nécessaire
                         unit_code_int = 1
@@ -286,7 +298,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                         cmd_str = "on" if command == CMD_ON else "off"
                         
                         _LOGGER.info(
-                            "🔵 Tentative d'envoi via Node.js: protocole=%s, device_id=%s, house_code=%s, unit_code=%s, command=%s",
+                            "🔵 Envoi via add-on HTTP: protocole=%s, device_id=%s, house_code=%s, unit_code=%s, command=%s",
                             protocol,
                             device_id,
                             house_code,
@@ -304,7 +316,7 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                         
                         if success:
                             _LOGGER.info(
-                                "✅ Commande envoyée via Node.js: protocole=%s, device=%s/%s, commande=%s",
+                                "✅ Commande envoyée avec succès via add-on HTTP: protocole=%s, device=%s/%s, commande=%s",
                                 protocol,
                                 device_id or house_code,
                                 unit_code_int,
@@ -312,43 +324,28 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
                             )
                             return True
                         else:
-                            _LOGGER.warning(
-                                "⚠️ Échec de l'envoi via Node.js (protocole=%s), basculement vers Python",
-                                protocol,
-                            )
-                            # Continuer avec Python en cas d'échec
-                    except RuntimeError as e:
-                        _LOGGER.warning(
-                            "⚠️ Erreur Runtime Node.js (protocole=%s), basculement vers Python: %s",
-                            protocol,
-                            e,
-                        )
-                        # Continuer avec Python en cas d'erreur
+                            _LOGGER.error("❌ Échec de l'envoi via add-on HTTP")
+                            return False
                     except Exception as e:
-                        _LOGGER.warning(
-                            "⚠️ Erreur inattendue Node.js (protocole=%s), basculement vers Python: %s",
-                            protocol,
-                            e,
-                            exc_info=True,
-                        )
-                        # Continuer avec Python en cas d'erreur
+                        _LOGGER.error("❌ Erreur lors de l'envoi via add-on HTTP: %s", e, exc_info=True)
+                        return False
+                
+                # Pour réseau, utiliser Python
                 elif self.connection_type == CONNECTION_TYPE_NETWORK:
                     _LOGGER.info(
-                        "ℹ️ Connexion réseau détectée, Node.js non disponible (USB uniquement), utilisation de Python pour protocole=%s",
+                        "ℹ️ Connexion réseau détectée, utilisation de Python pour protocole=%s",
                         protocol,
                     )
-                elif not self._use_node_bridge:
-                    _LOGGER.info(
-                        "ℹ️ Bridge Node.js désactivé ou non initialisé, utilisation de Python pour protocole=%s",
-                        protocol,
-                    )
-                elif not self._node_bridge:
-                    _LOGGER.info(
-                        "ℹ️ Bridge Node.js non initialisé, utilisation de Python pour protocole=%s",
-                        protocol,
-                    )
+                else:
+                    # Ne devrait jamais arriver ici
+                    _LOGGER.error("Type de connexion inconnu: %s", self.connection_type)
+                    return False
                 
-                # Méthode Python (fallback si Node.js non disponible ou échec)
+                # Méthode Python (pour réseau uniquement - USB utilise l'add-on)
+                if self.connection_type != CONNECTION_TYPE_NETWORK:
+                    _LOGGER.error("❌ Tentative d'utiliser Python pour USB - l'add-on devrait être utilisé")
+                    return False
+                
                 if packet_type == PACKET_TYPE_LIGHTING1:
                     cmd_bytes = self._build_lighting1_command(
                         protocol, subtype, house_code, unit_code, command
@@ -396,15 +393,11 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
 
                 _LOGGER.info("📤 Commande construite: %s bytes, hex=%s", len(cmd_bytes), cmd_bytes.hex())
 
-                # Envoi de la commande
+                # Envoi de la commande (uniquement pour réseau - USB utilise l'add-on)
                 if self.connection_type == CONNECTION_TYPE_USB:
-                    await self.hass.async_add_executor_job(
-                        self.serial_port.write, cmd_bytes
-                    )
-                    await self.hass.async_add_executor_job(
-                        self.serial_port.flush
-                    )
-                    _LOGGER.info("📤 Commande envoyée via USB: %s bytes", len(cmd_bytes))
+                    # Ne devrait jamais arriver ici car USB utilise l'add-on
+                    _LOGGER.error("❌ Tentative d'envoi via port série Python pour USB - l'add-on devrait être utilisé")
+                    return False
                 elif self.connection_type == CONNECTION_TYPE_NETWORK:
                     try:
                         # Vérifier que le socket est toujours connecté
@@ -748,35 +741,11 @@ class RFXCOMCoordinator(DataUpdateCoordinator):
             try:
                 # Lire les données
                 if self.connection_type == CONNECTION_TYPE_USB:
-                    if not self.serial_port or not self.serial_port.is_open:
-                        _LOGGER.debug("Port série fermé, attente...")
-                        await asyncio.sleep(1)
-                        continue
-
-                    # Lire la longueur du paquet (premier byte)
-                    data = await self.hass.async_add_executor_job(
-                        self.serial_port.read, 1
-                    )
-                    if not data or len(data) < 1:
-                        await asyncio.sleep(0.1)
-                        continue
-
-                    packet_length = data[0]
-                    _LOGGER.debug("Paquet reçu: longueur=%s", packet_length)
-                    if packet_length < 1 or packet_length > 50:
-                        _LOGGER.debug("Longueur invalide, ignoré: %s", packet_length)
-                        continue
-
-                    # Lire le reste du paquet
-                    remaining = await self.hass.async_add_executor_job(
-                        self.serial_port.read, packet_length - 1
-                    )
-                    if len(remaining) < packet_length - 1:
-                        _LOGGER.debug("Paquet incomplet: reçu %s/%s bytes", len(remaining), packet_length - 1)
-                        continue
-
-                    packet = data + remaining
-                    _LOGGER.debug("Paquet complet reçu: %s bytes, hex=%s", len(packet), packet.hex())
+                    # Pour USB, la réception est gérée par l'add-on
+                    # Pour l'instant, on attend - la réception sera implémentée plus tard via l'add-on
+                    _LOGGER.debug("Réception USB - l'add-on gère la réception des messages")
+                    await asyncio.sleep(1)
+                    continue
 
                 elif self.connection_type == CONNECTION_TYPE_NETWORK:
                     if not self.socket:

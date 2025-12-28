@@ -48,29 +48,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Données de configuration: %s", entry.data)
     _LOGGER.debug("Options: %s", entry.options)
     
-    # Vérifier la présence de Node.js si connexion USB (pour toutes les commandes)
+    # Pour les connexions USB, l'add-on RFXCOM Node.js Bridge sera utilisé
     connection_type = entry.data.get("connection_type")
     if connection_type == "usb":
-        _LOGGER.info("🔍 Vérification de Node.js pour le bridge RFXCOM (connexion USB)...")
-        try:
-            import asyncio
-            import subprocess
-            process = await asyncio.create_subprocess_exec(
-                "node",
-                "--version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await process.communicate()
-            if process.returncode == 0:
-                version = stdout.decode().strip()
-                _LOGGER.info("✅ Node.js détecté: %s - Le bridge Node.js sera utilisé pour toutes les commandes", version)
-            else:
-                _LOGGER.warning("⚠️ Node.js non disponible - Tentative d'installation automatique...")
-        except FileNotFoundError:
-            _LOGGER.warning("⚠️ Node.js non installé - Tentative d'installation automatique...")
-        except Exception as e:
-            _LOGGER.warning("⚠️ Erreur lors de la vérification de Node.js: %s - Tentative d'installation automatique...", e)
+        _LOGGER.info("💡 Connexion USB détectée - L'add-on RFXCOM Node.js Bridge sera utilisé")
     elif connection_type == "network":
         _LOGGER.info("ℹ️ Connexion réseau détectée - Node.js non requis (fonctionne uniquement en USB)")
         _LOGGER.info("💡 Pour utiliser Node.js (recommandé pour meilleure compatibilité), configurez une connexion USB")
@@ -103,7 +84,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_setup()
         _LOGGER.debug("Coordinateur initialisé avec succès")
     except Exception as err:
-        _LOGGER.error("Erreur lors de l'initialisation de RFXCOM: %s", err)
+        _LOGGER.error(
+            "Erreur lors de l'initialisation de RFXCOM: %s (type: %s)",
+            err,
+            type(err).__name__,
+            exc_info=True
+        )
         raise ConfigEntryNotReady from err
 
     hass.data.setdefault(DOMAIN, {})

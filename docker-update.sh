@@ -41,12 +41,57 @@ if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
     echo ""
 fi
 
-# Vérifier que le lien symbolique existe
+# Vérifier que le lien symbolique existe pour le plugin
 if [ ! -L ha_config/custom_components/rfxcom ] && [ ! -d ha_config/custom_components/rfxcom ]; then
     echo "📁 Création du lien symbolique pour custom_components/rfxcom..."
     mkdir -p ha_config/custom_components
     ln -sfn "$(pwd)/custom_components/rfxcom" ha_config/custom_components/rfxcom
-    echo "✅ Lien symbolique créé"
+    echo "✅ Lien symbolique créé pour le plugin"
+    echo ""
+fi
+
+# Installer l'add-on RFXCOM Node.js Bridge depuis Git
+ADDON_DEST="ha_config/local_addons/rfxcom-nodejs-bridge"
+ADDON_GIT_URL="${RFXCOM_ADDON_GIT_URL:-https://github.com/loneObserver1/rfxcom-nodejs-bridge-addon.git}"
+
+echo "📦 Installation de l'add-on RFXCOM Node.js Bridge..."
+mkdir -p ha_config/local_addons
+
+# Si l'add-on existe déjà, vérifier s'il est un dépôt Git
+if [ -d "$ADDON_DEST" ]; then
+    if [ -d "$ADDON_DEST/.git" ]; then
+        echo "   Add-on déjà installé depuis Git, mise à jour..."
+        cd "$ADDON_DEST"
+        git pull || echo "   ⚠️  Erreur lors de la mise à jour Git, continuons..."
+        cd - > /dev/null
+    else
+        echo "   Add-on existant détecté (non Git), remplacement..."
+        rm -rf "$ADDON_DEST"
+        git clone "$ADDON_GIT_URL" "$ADDON_DEST"
+    fi
+else
+    echo "   Clonage du dépôt Git de l'add-on..."
+    git clone "$ADDON_GIT_URL" "$ADDON_DEST" || {
+        echo "   ⚠️  Erreur lors du clonage Git, tentative avec la source locale..."
+        ADDON_SOURCE="addon/rfxcom-nodejs-bridge"
+        if [ -d "$ADDON_SOURCE" ]; then
+            cp -r "$ADDON_SOURCE" "$ADDON_DEST"
+            echo "   ✅ Add-on installé depuis la source locale"
+        else
+            echo "   ❌ Impossible d'installer l'add-on (Git et source locale introuvables)"
+            echo "   L'add-on devra être installé manuellement."
+        fi
+    }
+fi
+
+if [ -d "$ADDON_DEST" ]; then
+    echo "✅ Add-on installé dans $ADDON_DEST"
+    echo ""
+    echo "💡 Pour utiliser l'add-on dans Home Assistant:"
+    echo "   1. Allez dans Paramètres > Modules complémentaires > Dépôts de modules complémentaires"
+    echo "   2. Ajoutez le dépôt: $ADDON_GIT_URL"
+    echo "   3. Ou installez l'add-on manuellement depuis $ADDON_DEST"
+    echo "   4. Installez et démarrez l'add-on 'RFXCOM Node.js Bridge'"
     echo ""
 fi
 
