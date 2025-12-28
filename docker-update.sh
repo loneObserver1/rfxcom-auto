@@ -75,7 +75,9 @@ else
         echo "   ⚠️  Erreur lors du clonage Git, tentative avec la source locale..."
         ADDON_SOURCE="addon/rfxcom-nodejs-bridge"
         if [ -d "$ADDON_SOURCE" ]; then
-            cp -r "$ADDON_SOURCE" "$ADDON_DEST"
+            # Créer la structure correcte pour l'add-on local
+            mkdir -p "$ADDON_DEST"
+            cp -r "$ADDON_SOURCE"/* "$ADDON_DEST/"
             echo "   ✅ Add-on installé depuis la source locale"
         else
             echo "   ❌ Impossible d'installer l'add-on (Git et source locale introuvables)"
