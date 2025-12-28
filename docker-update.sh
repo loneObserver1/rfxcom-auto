@@ -57,21 +57,19 @@ ADDON_GIT_URL="${RFXCOM_ADDON_GIT_URL:-https://github.com/loneObserver1/rfxcom-n
 echo "📦 Installation de l'add-on RFXCOM Node.js Bridge..."
 mkdir -p ha_config/local_addons
 
+# Cloner le dépôt dans un répertoire temporaire
+ADDON_TEMP_DIR="ha_config/local_addons/rfxcom-nodejs-bridge-temp"
+rm -rf "$ADDON_TEMP_DIR"
+
 # Si l'add-on existe déjà, vérifier s'il est un dépôt Git
-if [ -d "$ADDON_DEST" ]; then
-    if [ -d "$ADDON_DEST/.git" ]; then
-        echo "   Add-on déjà installé depuis Git, mise à jour..."
-        cd "$ADDON_DEST"
-        git pull || echo "   ⚠️  Erreur lors de la mise à jour Git, continuons..."
-        cd - > /dev/null
-    else
-        echo "   Add-on existant détecté (non Git), remplacement..."
-        rm -rf "$ADDON_DEST"
-        git clone "$ADDON_GIT_URL" "$ADDON_DEST"
-    fi
+if [ -d "$ADDON_DEST" ] && [ -d "$ADDON_DEST/.git" ]; then
+    echo "   Add-on déjà installé depuis Git, mise à jour..."
+    cd "$ADDON_DEST"
+    git pull || echo "   ⚠️  Erreur lors de la mise à jour Git, continuons..."
+    cd - > /dev/null
 else
     echo "   Clonage du dépôt Git de l'add-on..."
-    git clone "$ADDON_GIT_URL" "$ADDON_DEST" || {
+    git clone "$ADDON_GIT_URL" "$ADDON_TEMP_DIR" || {
         echo "   ⚠️  Erreur lors du clonage Git, tentative avec la source locale..."
         ADDON_SOURCE="addon/rfxcom-nodejs-bridge"
         if [ -d "$ADDON_SOURCE" ]; then
@@ -83,7 +81,17 @@ else
             echo "   ❌ Impossible d'installer l'add-on (Git et source locale introuvables)"
             echo "   L'add-on devra être installé manuellement."
         fi
+        ADDON_TEMP_DIR=""
     }
+    
+    # Si le clonage Git a réussi, copier le contenu du dossier rfxcom-nodejs-bridge/
+    if [ -d "$ADDON_TEMP_DIR" ] && [ -d "$ADDON_TEMP_DIR/rfxcom-nodejs-bridge" ]; then
+        echo "   Copie de l'add-on depuis le dépôt Git..."
+        rm -rf "$ADDON_DEST"
+        cp -r "$ADDON_TEMP_DIR/rfxcom-nodejs-bridge" "$ADDON_DEST"
+        rm -rf "$ADDON_TEMP_DIR"
+        echo "   ✅ Add-on installé depuis Git"
+    fi
 fi
 
 if [ -d "$ADDON_DEST" ]; then
